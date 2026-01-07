@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administration MMO Harry Potter</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Page de connexion -->
+    <div id="login-view" class="view active">
+        <div class="login-container">
+            <h1>🔮 Administration MMO</h1>
+            <h2>Harry Potter</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Mot de passe</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Se connecter</button>
+                <div id="login-error" class="error-message"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Vue principale admin -->
+    <div id="admin-view" class="view">
+        <header class="admin-header">
+            <h1>🏰 Panneau d'Administration</h1>
+            <div class="user-info">
+                <span id="user-email"></span>
+                <button id="logout-btn" class="btn btn-secondary">Déconnexion</button>
+            </div>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="houses">Maisons</button>
+            <button class="tab-btn" data-tab="characters">Personnages</button>
+        </nav>
+
+        <!-- Onglet Maisons -->
+        <div id="houses-tab" class="tab-content active">
+            <div class="content-header">
+                <h2>🏆 Gestion des Points de Maison</h2>
+            </div>
+
+            <!-- Classement des maisons -->
+            <div class="houses-ranking">
+                <h3>Classement Actuel</h3>
+                <div id="ranking-list" class="ranking-list"></div>
+            </div>
+
+            <!-- Formulaire d'ajout/retrait de points -->
+            <div class="house-points-form">
+                <h3>Modifier les Points</h3>
+                <form id="points-form">
+                    <div class="form-group">
+                        <label for="house-select">Maison</label>
+                        <select id="house-select" required>
+                            <option value="">-- Sélectionner --</option>
+                            <option value="Venatrix">Venatrix 🦅</option>
+                            <option value="Falcon">Falcon 🦅</option>
+                            <option value="Brumval">Brumval 🦡</option>
+                            <option value="Aerwyn">Aerwyn 🦁</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="points-action">Action</label>
+                        <select id="points-action" required>
+                            <option value="add">Ajouter</option>
+                            <option value="remove">Retirer</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="points-amount">Montant</label>
+                        <input type="number" id="points-amount" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="character-name">Nom du personnage (optionnel)</label>
+                        <input type="text" id="character-name">
+                    </div>
+                    <div class="form-group">
+                        <label for="points-reason">Raison</label>
+                        <textarea id="points-reason" rows="3" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Valider</button>
+                </form>
+            </div>
+
+            <!-- Historique -->
+            <div class="points-history">
+                <h3>Historique Récent</h3>
+                <div id="history-list" class="history-list"></div>
+            </div>
+        </div>
+
+        <!-- Onglet Personnages -->
+        <div id="characters-tab" class="tab-content">
+            <div class="content-header">
+                <h2>👤 Gestion des Personnages</h2>
+                <button id="refresh-characters-btn" class="btn btn-secondary">Actualiser</button>
+            </div>
+
+            <!-- Liste des personnages -->
+            <div id="characters-list" class="characters-list"></div>
+        </div>
+    </div>
+
+    <!-- Modal Détails du Personnage -->
+    <div id="character-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="character-modal-title">Détails du Personnage</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+
+            <div class="modal-tabs">
+                <button class="modal-tab-btn active" data-tab="info">Informations</button>
+                <button class="modal-tab-btn" data-tab="spells">Sorts</button>
+                <button class="modal-tab-btn" data-tab="inventory">Inventaire</button>
+            </div>
+
+            <!-- Onglet Informations -->
+            <div id="info-modal-tab" class="modal-tab-content active">
+                <form id="character-edit-form">
+                    <input type="hidden" id="edit-character-id">
+                    <div class="form-group">
+                        <label for="edit-character-name">Nom</label>
+                        <input type="text" id="edit-character-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-character-level">Niveau</label>
+                        <input type="number" id="edit-character-level" min="1" max="100" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-character-xp">XP</label>
+                        <input type="number" id="edit-character-xp" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-character-house">Maison</label>
+                        <select id="edit-character-house" required>
+                            <option value="Pas de Maison">Pas de Maison</option>
+                            <option value="Venatrix">Venatrix</option>
+                            <option value="Falcon">Falcon</option>
+                            <option value="Brumval">Brumval</option>
+                            <option value="Aerwyn">Aerwyn</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </form>
+            </div>
+
+            <!-- Onglet Sorts -->
+            <div id="spells-modal-tab" class="modal-tab-content">
+                <div class="spells-section">
+                    <h3>Sorts Appris</h3>
+                    <div id="character-spells-list" class="spells-list"></div>
+                </div>
+
+                <div class="add-spell-section">
+                    <h3>Ajouter un Sort</h3>
+                    <form id="add-spell-form">
+                        <div class="form-group">
+                            <label for="spell-select">Sort</label>
+                            <select id="spell-select" required>
+                                <option value="">-- Sélectionner --</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Apprendre le Sort</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Onglet Inventaire -->
+            <div id="inventory-modal-tab" class="modal-tab-content">
+                <div class="inventory-section">
+                    <h3>Inventaire</h3>
+                    <div id="character-inventory-list" class="inventory-list"></div>
+                </div>
+
+                <div class="add-item-section">
+                    <h3>Ajouter un Objet</h3>
+                    <form id="add-item-form">
+                        <div class="form-group">
+                            <label for="item-select">Objet</label>
+                            <select id="item-select" required>
+                                <option value="">-- Sélectionner --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="item-quantity">Quantité</label>
+                            <input type="number" id="item-quantity" min="1" value="1" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Ajouter l'Objet</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast pour les notifications -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/@heroiclabs/nakama-js@2.6.0/dist/nakama-js.umd.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
