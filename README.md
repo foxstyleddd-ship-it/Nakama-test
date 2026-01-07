@@ -1,6 +1,6 @@
-# Nakama Backend pour Unreal Engine
+# Nakama Backend pour MMO Harry Potter (Unreal Engine)
 
-Ce projet contient la configuration du serveur Nakama pour votre projet Unreal Engine.
+Ce projet contient la configuration du serveur Nakama pour votre MMO Harry Potter, incluant un système complet de gestion de personnages.
 
 ## Qu'est-ce que Nakama?
 
@@ -13,14 +13,46 @@ Nakama est un serveur backend open-source pour les jeux qui fournit:
 - Groupes et amis
 - Et bien plus...
 
+## Fonctionnalités
+
+### 🎮 Système de Gestion de Personnages
+
+Le serveur inclut un système complet pour gérer les personnages de votre MMO:
+- **Création de personnages** (max 10 par compte)
+- **Stockage persistant** des données
+- **Gestion du niveau et de l'XP**
+- **Mise à jour en temps réel**
+- **Suppression de personnages**
+
+Chaque personnage contient:
+- ID unique
+- Nom (2-20 caractères)
+- Niveau (1-100)
+- Points d'expérience (XP)
+- Timestamps de création et modification
+
+📖 **[Guide d'intégration Unreal Engine complet →](UNREAL_INTEGRATION.md)**
+
 ## Prérequis
 
 - Docker et Docker Compose installés sur votre machine
+- Node.js et npm (pour compiler les modules serveur)
 - Ports disponibles: 7349, 7350, 7351, 5432, 8080
 
 ## Installation
 
-### 1. Démarrer Nakama
+### 1. Compiler les modules serveur
+
+```bash
+cd server-modules
+npm install
+npm run build
+cd ..
+```
+
+Cette étape compile le code TypeScript du système de gestion de personnages.
+
+### 2. Démarrer Nakama
 
 ```bash
 docker-compose up -d
@@ -30,8 +62,9 @@ Cette commande va:
 - Télécharger les images Docker nécessaires (PostgreSQL et Nakama)
 - Créer et démarrer les conteneurs
 - Initialiser la base de données
+- Charger les modules serveur personnalisés
 
-### 2. Vérifier que Nakama est en cours d'exécution
+### 3. Vérifier que Nakama est en cours d'exécution
 
 ```bash
 docker-compose ps
@@ -39,7 +72,7 @@ docker-compose ps
 
 Vous devriez voir les conteneurs `nakama` et `nakama-postgres` en état "Up".
 
-### 3. Accéder à la console d'administration
+### 4. Accéder à la console d'administration
 
 Ouvrez votre navigateur et allez à: http://localhost:7351
 
@@ -85,45 +118,46 @@ docker-compose restart nakama
 
 ## Intégration avec Unreal Engine
 
-### Installation du client Nakama
+### Guide complet
 
-1. Téléchargez le plugin Nakama Unreal depuis: https://github.com/heroiclabs/nakama-unreal
-2. Copiez le dossier du plugin dans le dossier `Plugins` de votre projet Unreal
+📖 **Consultez le [Guide d'intégration Unreal Engine](UNREAL_INTEGRATION.md)** pour:
+- Intégration complète du client Nakama
+- Exemples de code C++ pour la gestion de personnages
+- Utilisation en Blueprints
+- Système de sauvegarde automatique
+- Gestion de la progression (niveau/XP)
+
+### Installation rapide du client Nakama
+
+1. Téléchargez le plugin depuis: https://github.com/heroiclabs/nakama-unreal
+2. Placez-le dans `VotreProjet/Plugins/Nakama/`
 3. Redémarrez Unreal Engine
 
-### Configuration du client
-
-Dans votre projet Unreal, utilisez ces paramètres:
-- **Server**: `localhost` (ou l'IP de votre serveur)
-- **Port**: `7350`
-- **Server Key**: `defaultkey`
-
-### Exemple de connexion
+### Configuration de base
 
 ```cpp
-// Créer un client Nakama
 UNakamaClient* Client = UNakamaClient::CreateDefaultClient(
     TEXT("defaultkey"),
     TEXT("localhost"),
     7350,
     TEXT("http")
 );
+```
 
-// Authentifier un utilisateur
-Client->AuthenticateDevice(
-    TEXT("unique-device-id"),
-    TEXT(""),
-    true,
-    {},
-    [](UNakamaSession* Session)
-    {
-        UE_LOG(LogTemp, Log, TEXT("Connecté avec succès!"));
-    },
-    [](const FNakamaError& Error)
-    {
-        UE_LOG(LogTemp, Error, TEXT("Erreur de connexion: %s"), *Error.Message);
-    }
-);
+### Utiliser les RPCs de personnages
+
+Une fois authentifié, appelez les RPCs:
+
+```cpp
+// Créer un personnage
+Client->RPC(Session, TEXT("create_character"), TEXT("{\"name\":\"Harry Potter\"}"), ...);
+
+// Récupérer tous les personnages
+Client->RPC(Session, TEXT("get_characters"), TEXT("{}"), ...);
+
+// Mettre à jour (niveau/XP)
+Client->RPC(Session, TEXT("update_character"),
+    TEXT("{\"characterId\":\"xxx\",\"level\":5,\"xp\":1250}"), ...);
 ```
 
 ## Logs
@@ -164,8 +198,56 @@ Générez des clés aléatoires sécurisées avec:
 openssl rand -base64 32
 ```
 
+## Structure du Projet
+
+```
+Nakama-test/
+├── docker-compose.yml              # Configuration Docker
+├── nakama/
+│   └── data/
+│       └── local.yml               # Configuration Nakama
+├── server-modules/                 # Modules serveur personnalisés
+│   ├── src/
+│   │   └── main.ts                 # Logique de gestion des personnages
+│   ├── build/                      # Code compilé (généré)
+│   ├── package.json
+│   └── tsconfig.json
+├── README.md                       # Ce fichier
+└── UNREAL_INTEGRATION.md           # Guide d'intégration Unreal
+```
+
+## Développement des Modules Serveur
+
+Les modules serveur sont écrits en TypeScript et compilés en JavaScript.
+
+### Modifier la logique serveur
+
+1. Éditez `server-modules/src/main.ts`
+2. Compilez: `cd server-modules && npm run build`
+3. Redémarrez Nakama: `docker-compose restart nakama`
+
+### Mode développement (auto-recompilation)
+
+```bash
+cd server-modules
+npm run watch
+```
+
+### Ajouter de nouvelles fonctionnalités
+
+Vous pouvez facilement étendre le système pour ajouter:
+- Maisons de Poudlard (Gryffondor, Serpentard, etc.)
+- Inventaire (baguettes, potions)
+- Sorts appris
+- Quêtes complétées
+- Statistiques de jeu
+
+Consultez `server-modules/README.md` pour plus de détails.
+
 ## Ressources
 
+- 📖 [Guide d'intégration Unreal Engine](UNREAL_INTEGRATION.md)
+- 📖 [Documentation modules serveur](server-modules/README.md)
 - [Documentation Nakama](https://heroiclabs.com/docs/)
 - [Documentation Nakama Unreal](https://heroiclabs.com/docs/unreal-client-guide/)
 - [API Reference](https://heroiclabs.com/docs/runtime-code-basics/)

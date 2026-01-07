@@ -37,6 +37,7 @@ services:
         condition: service_healthy
     volumes:
       - ./nakama/data:/nakama/data
+      - ./server-modules/build:/nakama/data/modules
     expose:
       - "7349"
       - "7350"

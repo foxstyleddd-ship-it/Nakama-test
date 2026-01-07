@@ -1,0 +1,534 @@
+# Intégration Nakama dans Unreal Engine - MMO Harry Potter
+
+Ce guide explique comment intégrer le système de gestion de personnages Nakama dans votre projet Unreal Engine.
+
+## Prérequis
+
+1. **Plugin Nakama Unreal installé**
+   - Téléchargez depuis: https://github.com/heroiclabs/nakama-unreal
+   - Placez dans `YourProject/Plugins/Nakama/`
+
+2. **Serveur Nakama démarré**
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Modules serveur compilés**
+   ```bash
+   cd server-modules
+   npm install
+   npm run build
+   ```
+
+## Configuration du Client Nakama
+
+### 1. Créer un subsystem de jeu
+
+Créez `UHarryPotterGameInstanceSubsystem` dans votre projet:
+
+```cpp
+// HarryPotterGameInstanceSubsystem.h
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Subsystems/GameInstanceSubsystem.h"
+#include "NakamaClient.h"
+#include "NakamaSession.h"
+#include "HarryPotterGameInstanceSubsystem.generated.h"
+
+USTRUCT(BlueprintType)
+struct FCharacterData
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Id;
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Name;
+
+    UPROPERTY(BlueprintReadWrite)
+    int32 Level;
+
+    UPROPERTY(BlueprintReadWrite)
+    int32 XP;
+
+    UPROPERTY(BlueprintReadWrite)
+    int64 CreatedAt;
+
+    UPROPERTY(BlueprintReadWrite)
+    int64 UpdatedAt;
+};
+
+UCLASS()
+class YOURPROJECT_API UHarryPotterGameInstanceSubsystem : public UGameInstanceSubsystem
+{
+    GENERATED_BODY()
+
+public:
+    virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+    virtual void Deinitialize() override;
+
+    // Authentification
+    UFUNCTION(BlueprintCallable, Category = "Nakama|Auth")
+    void AuthenticateDevice(const FString& DeviceId);
+
+    // Gestion des personnages
+    UFUNCTION(BlueprintCallable, Category = "Nakama|Characters")
+    void CreateCharacter(const FString& CharacterName);
+
+    UFUNCTION(BlueprintCallable, Category = "Nakama|Characters")
+    void GetAllCharacters();
+
+    UFUNCTION(BlueprintCallable, Category = "Nakama|Characters")
+    void UpdateCharacter(const FString& CharacterId, int32 NewLevel, int32 NewXP);
+
+    UFUNCTION(BlueprintCallable, Category = "Nakama|Characters")
+    void DeleteCharacter(const FString& CharacterId);
+
+    // Callbacks
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAuthSuccess, UNakamaSession*, Session);
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAuthError, const FString&, ErrorMessage);
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterCreated, FCharacterData, Character);
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharactersLoaded, const TArray<FCharacterData>&, Characters);
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterUpdated, FCharacterData, Character);
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCharacterDeleted);
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnError, const FString&, ErrorMessage);
+
+    UPROPERTY(BlueprintAssignable)
+    FOnAuthSuccess OnAuthSuccess;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnAuthError OnAuthError;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnCharacterCreated OnCharacterCreated;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnCharactersLoaded OnCharactersLoaded;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnCharacterUpdated OnCharacterUpdated;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnCharacterDeleted OnCharacterDeleted;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnError OnError;
+
+private:
+    UPROPERTY()
+    UNakamaClient* NakamaClient;
+
+    UPROPERTY()
+    UNakamaSession* CurrentSession;
+
+    FCharacterData ParseCharacterJson(const TSharedPtr<FJsonObject>& JsonObject);
+};
+```
+
+### 2. Implémenter le subsystem
+
+```cpp
+// HarryPotterGameInstanceSubsystem.cpp
+#include "HarryPotterGameInstanceSubsystem.h"
+#include "NakamaClient.h"
+#include "NakamaSession.h"
+#include "NakamaRealtimeClient.h"
+#include "JsonObjectConverter.h"
+
+void UHarryPotterGameInstanceSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+    Super::Initialize(Collection);
+
+    // Créer le client Nakama
+    NakamaClient = UNakamaClient::CreateDefaultClient(
+        TEXT("defaultkey"),      // Server Key
+        TEXT("localhost"),       // Server (changez pour votre serveur)
+        7350,                    // Port
+        TEXT("http"),            // Protocole
+        false                    // SSL
+    );
+
+    UE_LOG(LogTemp, Log, TEXT("Nakama Client initialisé"));
+}
+
+void UHarryPotterGameInstanceSubsystem::Deinitialize()
+{
+    Super::Deinitialize();
+}
+
+void UHarryPotterGameInstanceSubsystem::AuthenticateDevice(const FString& DeviceId)
+{
+    if (!NakamaClient)
+    {
+        OnAuthError.Broadcast("Client Nakama non initialisé");
+        return;
+    }
+
+    NakamaClient->AuthenticateDevice(
+        DeviceId,
+        TEXT(""),
+        true, // Créer le compte s'il n'existe pas
+        {},
+        [this](UNakamaSession* Session)
+        {
+            CurrentSession = Session;
+            OnAuthSuccess.Broadcast(Session);
+            UE_LOG(LogTemp, Log, TEXT("Authentification réussie"));
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnAuthError.Broadcast(Error.Message);
+            UE_LOG(LogTemp, Error, TEXT("Erreur d'authentification: %s"), *Error.Message);
+        }
+    );
+}
+
+void UHarryPotterGameInstanceSubsystem::CreateCharacter(const FString& CharacterName)
+{
+    if (!CurrentSession)
+    {
+        OnError.Broadcast("Non authentifié");
+        return;
+    }
+
+    // Créer le JSON payload
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("name"), CharacterName);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    // Appeler le RPC
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("create_character"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            // Parser la réponse
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                FCharacterData Character = ParseCharacterJson(ResponseJson);
+                OnCharacterCreated.Broadcast(Character);
+                UE_LOG(LogTemp, Log, TEXT("Personnage créé: %s"), *Character.Name);
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+            UE_LOG(LogTemp, Error, TEXT("Erreur création personnage: %s"), *Error.Message);
+        }
+    );
+}
+
+void UHarryPotterGameInstanceSubsystem::GetAllCharacters()
+{
+    if (!CurrentSession)
+    {
+        OnError.Broadcast("Non authentifié");
+        return;
+    }
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("get_characters"),
+        TEXT("{}"),
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                const TArray<TSharedPtr<FJsonValue>>* CharactersArray;
+                if (ResponseJson->TryGetArrayField(TEXT("characters"), CharactersArray))
+                {
+                    TArray<FCharacterData> Characters;
+                    for (const TSharedPtr<FJsonValue>& CharValue : *CharactersArray)
+                    {
+                        FCharacterData Character = ParseCharacterJson(CharValue->AsObject());
+                        Characters.Add(Character);
+                    }
+                    OnCharactersLoaded.Broadcast(Characters);
+                    UE_LOG(LogTemp, Log, TEXT("Chargé %d personnages"), Characters.Num());
+                }
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+            UE_LOG(LogTemp, Error, TEXT("Erreur chargement personnages: %s"), *Error.Message);
+        }
+    );
+}
+
+void UHarryPotterGameInstanceSubsystem::UpdateCharacter(const FString& CharacterId, int32 NewLevel, int32 NewXP)
+{
+    if (!CurrentSession)
+    {
+        OnError.Broadcast("Non authentifié");
+        return;
+    }
+
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("characterId"), CharacterId);
+    JsonObject->SetNumberField(TEXT("level"), NewLevel);
+    JsonObject->SetNumberField(TEXT("xp"), NewXP);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("update_character"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                FCharacterData Character = ParseCharacterJson(ResponseJson);
+                OnCharacterUpdated.Broadcast(Character);
+                UE_LOG(LogTemp, Log, TEXT("Personnage mis à jour: %s"), *Character.Name);
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+
+void UHarryPotterGameInstanceSubsystem::DeleteCharacter(const FString& CharacterId)
+{
+    if (!CurrentSession)
+    {
+        OnError.Broadcast("Non authentifié");
+        return;
+    }
+
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("characterId"), CharacterId);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("delete_character"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            OnCharacterDeleted.Broadcast();
+            UE_LOG(LogTemp, Log, TEXT("Personnage supprimé"));
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+
+FCharacterData UHarryPotterGameInstanceSubsystem::ParseCharacterJson(const TSharedPtr<FJsonObject>& JsonObject)
+{
+    FCharacterData Character;
+    Character.Id = JsonObject->GetStringField(TEXT("id"));
+    Character.Name = JsonObject->GetStringField(TEXT("name"));
+    Character.Level = JsonObject->GetIntegerField(TEXT("level"));
+    Character.XP = JsonObject->GetIntegerField(TEXT("xp"));
+    Character.CreatedAt = JsonObject->GetNumberField(TEXT("createdAt"));
+    Character.UpdatedAt = JsonObject->GetNumberField(TEXT("updatedAt"));
+    return Character;
+}
+```
+
+## Utilisation en Blueprint
+
+### 1. Connexion au serveur
+
+Dans votre GameMode ou Widget de menu principal:
+
+1. **Get Game Instance**
+2. **Get Subsystem** → Sélectionnez `HarryPotterGameInstanceSubsystem`
+3. **Authenticate Device** → Passez un ID unique (ex: `GetPlatformUserId()`)
+4. **Bind Event to OnAuthSuccess** → Gérez le succès de connexion
+5. **Bind Event to OnAuthError** → Gérez les erreurs
+
+### 2. Créer un personnage
+
+```
+Get Subsystem → Create Character → "Harry Potter"
+```
+
+Bind l'événement `OnCharacterCreated` pour recevoir les données.
+
+### 3. Charger tous les personnages
+
+```
+Get Subsystem → Get All Characters
+```
+
+Bind l'événement `OnCharactersLoaded` pour afficher la liste.
+
+### 4. Mettre à jour un personnage
+
+```
+Get Subsystem → Update Character
+  ├─ Character Id: "uuid-du-personnage"
+  ├─ New Level: 5
+  └─ New XP: 1250
+```
+
+### 5. Supprimer un personnage
+
+```
+Get Subsystem → Delete Character → "uuid-du-personnage"
+```
+
+## Exemple de flux complet
+
+### Écran de sélection de personnage
+
+1. **Au démarrage du widget:**
+   ```
+   Event Construct
+   └─ Get All Characters
+      └─ On Characters Loaded
+         └─ For Each Character
+            └─ Create Character Button Widget
+   ```
+
+2. **Bouton "Nouveau Personnage":**
+   ```
+   On Clicked
+   └─ Show Name Input Dialog
+      └─ On Name Confirmed
+         └─ Create Character
+            └─ On Character Created
+               └─ Refresh Character List
+   ```
+
+3. **Bouton "Jouer":**
+   ```
+   On Clicked
+   └─ Save Selected Character to Game Instance
+      └─ Open Level "GameWorld"
+   ```
+
+## Progression du personnage en jeu
+
+Dans votre système de XP:
+
+```cpp
+void UXPComponent::AddExperience(int32 Amount)
+{
+    CurrentXP += Amount;
+
+    // Vérifier level up
+    if (CurrentXP >= GetXPForNextLevel())
+    {
+        CurrentLevel++;
+        CurrentXP = 0;
+        OnLevelUp.Broadcast(CurrentLevel);
+    }
+
+    // Sauvegarder sur le serveur
+    UHarryPotterGameInstanceSubsystem* Subsystem =
+        GetGameInstance()->GetSubsystem<UHarryPotterGameInstanceSubsystem>();
+
+    if (Subsystem)
+    {
+        Subsystem->UpdateCharacter(CurrentCharacterId, CurrentLevel, CurrentXP);
+    }
+}
+```
+
+## Sauvegarde automatique
+
+Créez un Timer pour sauvegarder périodiquement:
+
+```cpp
+// Dans votre PlayerController
+void AHPPlayerController::BeginPlay()
+{
+    Super::BeginPlay();
+
+    // Sauvegarder toutes les 5 minutes
+    GetWorldTimerManager().SetTimer(
+        SaveTimerHandle,
+        this,
+        &AHPPlayerController::SaveCharacterProgress,
+        300.0f, // 5 minutes
+        true
+    );
+}
+
+void AHPPlayerController::SaveCharacterProgress()
+{
+    // Récupérer les stats actuelles et sauvegarder
+    auto* Subsystem = GetGameInstance()->GetSubsystem<UHarryPotterGameInstanceSubsystem>();
+    if (Subsystem)
+    {
+        Subsystem->UpdateCharacter(
+            CurrentCharacterId,
+            GetCharacterLevel(),
+            GetCharacterXP()
+        );
+    }
+}
+```
+
+## Extensions futures possibles
+
+Vous pouvez étendre le système pour ajouter:
+
+- **Maison de Poudlard** (Gryffondor, Serpentard, etc.)
+- **Inventaire** (baguettes, potions, équipement)
+- **Sorts appris**
+- **Quêtes complétées**
+- **Relations sociales** (amis, groupes)
+- **Statistiques** (sorts lancés, ennemis vaincus, etc.)
+
+Modifiez simplement `server-modules/src/main.ts` pour ajouter ces champs à l'interface `Character` et recompilez avec `npm run build`.
+
+## Débogage
+
+### Voir les logs Nakama
+
+```bash
+docker-compose logs -f nakama
+```
+
+### Console admin
+
+http://localhost:7351 → Onglet "Storage" pour voir les données des personnages
+
+### Logs Unreal
+
+Activez les logs détaillés dans `DefaultEngine.ini`:
+
+```ini
+[Core.Log]
+LogNakama=Verbose
+LogTemp=Verbose
+```
+
+## Sécurité
+
+⚠️ **En production:**
+
+1. Changez `defaultkey` dans la configuration Nakama
+2. Utilisez HTTPS/WSS au lieu de HTTP/WS
+3. Ajoutez une validation supplémentaire côté serveur
+4. Limitez les appels RPC (rate limiting)
+5. Utilisez l'authentification par email/steam/etc. au lieu de Device ID

@@ -31,5 +31,6 @@ session:
   refresh_token_expiry_sec: 604800
 
 runtime:
-  path: ""
+  path: "modules"
   http_key: "defaulthttpkey"
+  js_entrypoint: "index.js"
