@@ -53,6 +53,17 @@ Compétition entre les maisons avec un système complet de points:
 
 Utilisez ce système pour récompenser les bonnes actions et pénaliser les infractions, créant ainsi une compétition dynamique entre les maisons!
 
+### 🎒 Système d'Inventaire
+
+Gestion complète de l'inventaire pour chaque personnage:
+- **19 objets prédéfinis** (baguettes, potions, livres, équipement, ingrédients, consommables)
+- **Empilement automatique** avec limites par type d'objet
+- **5 niveaux de rareté** (common, uncommon, rare, epic, legendary)
+- **Ajout/suppression d'objets** avec validation
+- **Stockage persistant** par personnage
+
+Objets légendaires inclus : Baguette de Sureau, Felix Felicis, Cape d'Invisibilité, et plus encore!
+
 📖 **[Guide d'intégration Unreal Engine complet →](UNREAL_INTEGRATION.md)**
 
 ## Prérequis
@@ -191,6 +202,17 @@ Client->RPC(Session, TEXT("add_house_points"),
 
 // Obtenir le classement des maisons
 Client->RPC(Session, TEXT("get_house_rankings"), TEXT("{}"), ...);
+
+// Ajouter un objet à l'inventaire
+Client->RPC(Session, TEXT("add_item_to_inventory"),
+    TEXT("{\\\"characterId\\\":\\\"xxx\\\",\\\"itemId\\\":\\\"wand_oak\\\",\\\"quantity\\\":1}"), ...);
+
+// Récupérer l'inventaire d'un personnage
+Client->RPC(Session, TEXT("get_character_inventory"),
+    TEXT("{\\\"characterId\\\":\\\"xxx\\\"}"), ...);
+
+// Obtenir la liste des objets disponibles
+Client->RPC(Session, TEXT("get_available_items"), TEXT("{}"), ...);
 ```
 
 ## Logs
@@ -271,11 +293,12 @@ npm run watch
 Vous pouvez facilement étendre le système pour ajouter:
 - ✅ **Maisons** (déjà implémenté: Venatrix, Falcon, Brumval, Aerwyn)
 - ✅ **Points de maison** (déjà implémenté: ajout/retrait, classement, historique)
-- Inventaire (baguettes, potions)
+- ✅ **Inventaire** (déjà implémenté: 19 objets, 6 catégories, empilement automatique)
 - Sorts appris
 - Quêtes complétées
 - Statistiques de jeu
 - Récompenses automatiques pour les maisons gagnantes
+- Crafting et alchimie
 
 Consultez `server-modules/README.md` pour plus de détails.
 

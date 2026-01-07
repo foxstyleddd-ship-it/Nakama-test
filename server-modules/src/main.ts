@@ -75,11 +75,88 @@ interface GetHousePointsHistoryRequest {
   limit?: number;
 }
 
+// Système d'inventaire
+type ItemType = "wand" | "potion" | "book" | "equipment" | "ingredient" | "quest" | "consumable";
+type ItemRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+
+interface Item {
+  id: string;
+  name: string;
+  description: string;
+  type: ItemType;
+  rarity: ItemRarity;
+  maxStack: number;
+}
+
+interface InventoryItem {
+  itemId: string;
+  quantity: number;
+  acquiredAt: number;
+}
+
+interface Inventory {
+  characterId: string;
+  items: InventoryItem[];
+  updatedAt: number;
+}
+
+interface AddItemRequest {
+  characterId: string;
+  itemId: string;
+  quantity: number;
+}
+
+interface RemoveItemRequest {
+  characterId: string;
+  itemId: string;
+  quantity: number;
+}
+
+interface GetInventoryRequest {
+  characterId: string;
+}
+
 const COLLECTION_CHARACTERS = "characters";
 const COLLECTION_HOUSE_POINTS = "house_points";
 const COLLECTION_HOUSE_POINTS_HISTORY = "house_points_history";
+const COLLECTION_INVENTORY = "character_inventory";
 const MAX_CHARACTERS_PER_ACCOUNT = 10;
 const PLAYABLE_HOUSES: House[] = ["Venatrix", "Falcon", "Brumval", "Aerwyn"];
+
+// Liste des objets prédéfinis
+const PREDEFINED_ITEMS: Item[] = [
+  // Baguettes magiques
+  { id: "wand_oak", name: "Baguette en Chêne", description: "Baguette en bois de chêne avec cœur de crin de licorne", type: "wand", rarity: "common", maxStack: 1 },
+  { id: "wand_elder", name: "Baguette de Sureau", description: "Baguette légendaire en bois de sureau", type: "wand", rarity: "legendary", maxStack: 1 },
+  { id: "wand_holly", name: "Baguette en Houx", description: "Baguette en bois de houx avec plume de phénix", type: "wand", rarity: "rare", maxStack: 1 },
+
+  // Potions
+  { id: "potion_health", name: "Potion de Soin", description: "Restaure la santé", type: "potion", rarity: "common", maxStack: 20 },
+  { id: "potion_mana", name: "Potion de Mana", description: "Restaure la magie", type: "potion", rarity: "common", maxStack: 20 },
+  { id: "potion_felix", name: "Felix Felicis", description: "Potion de chance liquide", type: "potion", rarity: "legendary", maxStack: 5 },
+  { id: "potion_poly", name: "Polynectar", description: "Permet de prendre l'apparence d'autrui", type: "potion", rarity: "epic", maxStack: 10 },
+
+  // Livres
+  { id: "book_spells_1", name: "Livre de Sorts Niveau 1", description: "Manuel de sortilèges basiques", type: "book", rarity: "common", maxStack: 1 },
+  { id: "book_spells_2", name: "Livre de Sorts Niveau 2", description: "Manuel de sortilèges intermédiaires", type: "book", rarity: "uncommon", maxStack: 1 },
+  { id: "book_dark_arts", name: "Défense contre les Forces du Mal", description: "Guide complet de défense", type: "book", rarity: "rare", maxStack: 1 },
+  { id: "book_potions", name: "Potions Magiques Avancées", description: "Recettes de potions complexes", type: "book", rarity: "rare", maxStack: 1 },
+
+  // Équipements
+  { id: "robe_student", name: "Robe d'Étudiant", description: "Robe standard d'étudiant", type: "equipment", rarity: "common", maxStack: 1 },
+  { id: "robe_house", name: "Robe de Maison", description: "Robe aux couleurs de votre maison", type: "equipment", rarity: "uncommon", maxStack: 1 },
+  { id: "cloak_invisibility", name: "Cape d'Invisibilité", description: "Cape légendaire d'invisibilité", type: "equipment", rarity: "legendary", maxStack: 1 },
+
+  // Ingrédients
+  { id: "ingredient_unicorn", name: "Crin de Licorne", description: "Ingrédient magique précieux", type: "ingredient", rarity: "rare", maxStack: 99 },
+  { id: "ingredient_phoenix", name: "Plume de Phénix", description: "Plume rare d'un phénix", type: "ingredient", rarity: "epic", maxStack: 99 },
+  { id: "ingredient_spider", name: "Venin d'Acromentule", description: "Venin d'araignée géante", type: "ingredient", rarity: "uncommon", maxStack: 99 },
+  { id: "ingredient_mandrake", name: "Racine de Mandragore", description: "Racine hurlante utilisée en potions", type: "ingredient", rarity: "uncommon", maxStack: 99 },
+
+  // Consommables
+  { id: "food_chocolate", name: "Chocogrenouille", description: "Friandise magique au chocolat", type: "consumable", rarity: "common", maxStack: 50 },
+  { id: "food_beans", name: "Dragées Surprises de Bertie Crochue", description: "Bonbons aux saveurs surprenantes", type: "consumable", rarity: "common", maxStack: 50 },
+];
 
 /**
  * Initialise le module serveur
@@ -99,10 +176,16 @@ function InitModule(ctx: nkruntime.Context, logger: nkruntime.Logger, nk: nkrunt
   initializer.registerRpc("get_house_rankings", rpcGetHouseRankings);
   initializer.registerRpc("get_house_points_history", rpcGetHousePointsHistory);
 
+  // Enregistrement des RPCs - Inventaire
+  initializer.registerRpc("add_item_to_inventory", rpcAddItemToInventory);
+  initializer.registerRpc("remove_item_from_inventory", rpcRemoveItemFromInventory);
+  initializer.registerRpc("get_character_inventory", rpcGetCharacterInventory);
+  initializer.registerRpc("get_available_items", rpcGetAvailableItems);
+
   // Initialiser les points de maison à 0
   initializeHousePoints(nk, logger);
 
-  logger.info("Module de gestion des personnages Harry Potter initialisé avec système de maisons et points");
+  logger.info("Module de gestion des personnages Harry Potter initialisé avec système de maisons, points et inventaire");
 }
 
 /**
@@ -694,6 +777,307 @@ function rpcGetHousePointsHistory(
   );
 
   return JSON.stringify({ history: transactions });
+}
+
+// ============================================================================
+// SYSTÈME D'INVENTAIRE
+// ============================================================================
+
+/**
+ * Trouve un objet dans la liste prédéfinie
+ */
+function findItem(itemId: string): Item | null {
+  return PREDEFINED_ITEMS.find(item => item.id === itemId) || null;
+}
+
+/**
+ * Récupère ou crée l'inventaire d'un personnage
+ */
+function getOrCreateInventory(nk: nkruntime.Nakama, characterId: string, userId: string): Inventory {
+  const objects = nk.storageRead([{
+    collection: COLLECTION_INVENTORY,
+    key: characterId,
+    userId: userId,
+  }]);
+
+  if (objects.length > 0) {
+    return objects[0].value as Inventory;
+  }
+
+  // Créer un inventaire vide
+  const inventory: Inventory = {
+    characterId: characterId,
+    items: [],
+    updatedAt: Date.now(),
+  };
+
+  nk.storageWrite([{
+    collection: COLLECTION_INVENTORY,
+    key: characterId,
+    userId: userId,
+    value: inventory,
+    permissionRead: 1,
+    permissionWrite: 0,
+  }]);
+
+  return inventory;
+}
+
+/**
+ * RPC: Ajouter un objet à l'inventaire
+ */
+function rpcAddItemToInventory(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: AddItemRequest = JSON.parse(payload);
+
+  // Validation
+  if (!request.characterId) {
+    throw Error("ID du personnage requis");
+  }
+
+  if (!request.itemId) {
+    throw Error("ID de l'objet requis");
+  }
+
+  if (!request.quantity || request.quantity <= 0) {
+    throw Error("La quantité doit être supérieure à 0");
+  }
+
+  // Vérifier que l'objet existe
+  const item = findItem(request.itemId);
+  if (!item) {
+    throw Error(`Objet "${request.itemId}" non trouvé dans la liste des objets disponibles`);
+  }
+
+  // Vérifier que le personnage appartient à l'utilisateur
+  const characterObjects = nk.storageRead([{
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+  }]);
+
+  if (characterObjects.length === 0) {
+    throw Error("Personnage non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  // Récupérer l'inventaire
+  const inventory = getOrCreateInventory(nk, request.characterId, ctx.userId);
+
+  // Chercher si l'objet existe déjà dans l'inventaire
+  const existingItemIndex = inventory.items.findIndex(i => i.itemId === request.itemId);
+
+  if (existingItemIndex >= 0) {
+    // L'objet existe, on ajoute à la quantité
+    const newQuantity = inventory.items[existingItemIndex].quantity + request.quantity;
+
+    // Vérifier la limite de stack
+    if (newQuantity > item.maxStack) {
+      throw Error(`Impossible d'ajouter ${request.quantity} ${item.name}. Maximum ${item.maxStack} par stack (actuellement ${inventory.items[existingItemIndex].quantity})`);
+    }
+
+    inventory.items[existingItemIndex].quantity = newQuantity;
+  } else {
+    // Nouvel objet
+    if (request.quantity > item.maxStack) {
+      throw Error(`Impossible d'ajouter ${request.quantity} ${item.name}. Maximum ${item.maxStack} par stack`);
+    }
+
+    inventory.items.push({
+      itemId: request.itemId,
+      quantity: request.quantity,
+      acquiredAt: Date.now(),
+    });
+  }
+
+  inventory.updatedAt = Date.now();
+
+  // Sauvegarder
+  nk.storageWrite([{
+    collection: COLLECTION_INVENTORY,
+    key: request.characterId,
+    userId: ctx.userId,
+    value: inventory,
+    permissionRead: 1,
+    permissionWrite: 0,
+  }]);
+
+  logger.info(
+    "Objet ajouté: %s x%d pour le personnage %s",
+    item.name,
+    request.quantity,
+    request.characterId
+  );
+
+  return JSON.stringify({ inventory, itemAdded: item });
+}
+
+/**
+ * RPC: Retirer un objet de l'inventaire
+ */
+function rpcRemoveItemFromInventory(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: RemoveItemRequest = JSON.parse(payload);
+
+  // Validation
+  if (!request.characterId) {
+    throw Error("ID du personnage requis");
+  }
+
+  if (!request.itemId) {
+    throw Error("ID de l'objet requis");
+  }
+
+  if (!request.quantity || request.quantity <= 0) {
+    throw Error("La quantité doit être supérieure à 0");
+  }
+
+  // Vérifier que l'objet existe
+  const item = findItem(request.itemId);
+  if (!item) {
+    throw Error(`Objet "${request.itemId}" non trouvé`);
+  }
+
+  // Vérifier que le personnage appartient à l'utilisateur
+  const characterObjects = nk.storageRead([{
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+  }]);
+
+  if (characterObjects.length === 0) {
+    throw Error("Personnage non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  // Récupérer l'inventaire
+  const inventory = getOrCreateInventory(nk, request.characterId, ctx.userId);
+
+  // Chercher l'objet dans l'inventaire
+  const itemIndex = inventory.items.findIndex(i => i.itemId === request.itemId);
+
+  if (itemIndex < 0) {
+    throw Error(`L'objet "${item.name}" n'est pas dans l'inventaire`);
+  }
+
+  const currentQuantity = inventory.items[itemIndex].quantity;
+
+  if (currentQuantity < request.quantity) {
+    throw Error(`Quantité insuffisante. Demandé: ${request.quantity}, disponible: ${currentQuantity}`);
+  }
+
+  // Retirer la quantité
+  const newQuantity = currentQuantity - request.quantity;
+
+  if (newQuantity === 0) {
+    // Supprimer l'objet complètement
+    inventory.items.splice(itemIndex, 1);
+  } else {
+    // Juste réduire la quantité
+    inventory.items[itemIndex].quantity = newQuantity;
+  }
+
+  inventory.updatedAt = Date.now();
+
+  // Sauvegarder
+  nk.storageWrite([{
+    collection: COLLECTION_INVENTORY,
+    key: request.characterId,
+    userId: ctx.userId,
+    value: inventory,
+    permissionRead: 1,
+    permissionWrite: 0,
+  }]);
+
+  logger.info(
+    "Objet retiré: %s x%d pour le personnage %s",
+    item.name,
+    request.quantity,
+    request.characterId
+  );
+
+  return JSON.stringify({ inventory, itemRemoved: item });
+}
+
+/**
+ * RPC: Récupérer l'inventaire d'un personnage
+ */
+function rpcGetCharacterInventory(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: GetInventoryRequest = JSON.parse(payload);
+
+  if (!request.characterId) {
+    throw Error("ID du personnage requis");
+  }
+
+  // Vérifier que le personnage appartient à l'utilisateur
+  const characterObjects = nk.storageRead([{
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+  }]);
+
+  if (characterObjects.length === 0) {
+    throw Error("Personnage non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  // Récupérer l'inventaire
+  const inventory = getOrCreateInventory(nk, request.characterId, ctx.userId);
+
+  // Enrichir avec les données complètes des objets
+  const enrichedItems = inventory.items.map(invItem => {
+    const itemData = findItem(invItem.itemId);
+    return {
+      ...invItem,
+      item: itemData,
+    };
+  });
+
+  logger.info("Inventaire récupéré pour le personnage %s: %d objets", request.characterId, inventory.items.length);
+
+  return JSON.stringify({
+    characterId: inventory.characterId,
+    items: enrichedItems,
+    updatedAt: inventory.updatedAt,
+  });
+}
+
+/**
+ * RPC: Récupérer la liste de tous les objets disponibles
+ */
+function rpcGetAvailableItems(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  // Pas besoin d'authentification pour voir les objets disponibles
+
+  logger.info("Liste des objets disponibles récupérée: %d objets", PREDEFINED_ITEMS.length);
+
+  return JSON.stringify({ items: PREDEFINED_ITEMS });
 }
 
 // Point d'entrée du module

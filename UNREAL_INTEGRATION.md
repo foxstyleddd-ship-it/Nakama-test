@@ -729,6 +729,391 @@ void UHarryPotterGameInstanceSubsystem::GetHousePointsHistory(const FString& Hou
 }
 ```
 
+## Système d'Inventaire
+
+### Structures de données
+
+Ajoutez ces structures à votre subsystem:
+
+```cpp
+UENUM(BlueprintType)
+enum class EItemType : uint8
+{
+    Wand UMETA(DisplayName = "Baguette"),
+    Potion UMETA(DisplayName = "Potion"),
+    Book UMETA(DisplayName = "Livre"),
+    Equipment UMETA(DisplayName = "Équipement"),
+    Ingredient UMETA(DisplayName = "Ingrédient"),
+    Consumable UMETA(DisplayName = "Consommable")
+};
+
+UENUM(BlueprintType)
+enum class EItemRarity : uint8
+{
+    Common UMETA(DisplayName = "Commun"),
+    Uncommon UMETA(DisplayName = "Peu commun"),
+    Rare UMETA(DisplayName = "Rare"),
+    Epic UMETA(DisplayName = "Épique"),
+    Legendary UMETA(DisplayName = "Légendaire")
+};
+
+USTRUCT(BlueprintType)
+struct FItem
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Id;
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Name;
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Description;
+
+    UPROPERTY(BlueprintReadWrite)
+    EItemType Type;
+
+    UPROPERTY(BlueprintReadWrite)
+    EItemRarity Rarity;
+
+    UPROPERTY(BlueprintReadWrite)
+    int32 MaxStack;
+};
+
+USTRUCT(BlueprintType)
+struct FInventoryItem
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FString ItemId;
+
+    UPROPERTY(BlueprintReadWrite)
+    int32 Quantity;
+
+    UPROPERTY(BlueprintReadWrite)
+    int64 AddedAt;
+
+    UPROPERTY(BlueprintReadWrite)
+    FItem Item; // Enrichi depuis PREDEFINED_ITEMS
+};
+
+USTRUCT(BlueprintType)
+struct FInventory
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FString CharacterId;
+
+    UPROPERTY(BlueprintReadWrite)
+    TArray<FInventoryItem> Items;
+
+    UPROPERTY(BlueprintReadWrite)
+    int64 UpdatedAt;
+};
+```
+
+### Ajouter un objet à l'inventaire
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::AddItemToInventory(
+    const FString& CharacterId,
+    const FString& ItemId,
+    int32 Quantity)
+{
+    if (!CurrentSession)
+    {
+        OnError.Broadcast("Non authentifié");
+        return;
+    }
+
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("characterId"), CharacterId);
+    JsonObject->SetStringField(TEXT("itemId"), ItemId);
+    JsonObject->SetNumberField(TEXT("quantity"), Quantity);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("add_item_to_inventory"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            // Parser la réponse
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                const TSharedPtr<FJsonObject>* InventoryObj;
+                if (ResponseJson->TryGetObjectField(TEXT("inventory"), InventoryObj))
+                {
+                    FInventory Inventory = ParseInventory(*InventoryObj);
+                    OnInventoryUpdated.Broadcast(Inventory);
+                }
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+```
+
+### Retirer un objet de l'inventaire
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::RemoveItemFromInventory(
+    const FString& CharacterId,
+    const FString& ItemId,
+    int32 Quantity)
+{
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("characterId"), CharacterId);
+    JsonObject->SetStringField(TEXT("itemId"), ItemId);
+    JsonObject->SetNumberField(TEXT("quantity"), Quantity);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("remove_item_from_inventory"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            // Objet retiré avec succès
+            UE_LOG(LogTemp, Log, TEXT("Objet retiré de l'inventaire"));
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+```
+
+### Récupérer l'inventaire d'un personnage
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::GetCharacterInventory(const FString& CharacterId)
+{
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("characterId"), CharacterId);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("get_character_inventory"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                FInventory Inventory = ParseInventory(ResponseJson);
+                OnInventoryLoaded.Broadcast(Inventory);
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+
+FInventory UHarryPotterGameInstanceSubsystem::ParseInventory(const TSharedPtr<FJsonObject>& JsonObject)
+{
+    FInventory Inventory;
+    Inventory.CharacterId = JsonObject->GetStringField(TEXT("characterId"));
+    Inventory.UpdatedAt = JsonObject->GetNumberField(TEXT("updatedAt"));
+
+    const TArray<TSharedPtr<FJsonValue>>* ItemsArray;
+    if (JsonObject->TryGetArrayField(TEXT("items"), ItemsArray))
+    {
+        for (const TSharedPtr<FJsonValue>& ItemValue : *ItemsArray)
+        {
+            const TSharedPtr<FJsonObject>& ItemObj = ItemValue->AsObject();
+            FInventoryItem InvItem;
+
+            InvItem.ItemId = ItemObj->GetStringField(TEXT("itemId"));
+            InvItem.Quantity = ItemObj->GetIntegerField(TEXT("quantity"));
+            InvItem.AddedAt = ItemObj->GetNumberField(TEXT("addedAt"));
+
+            // Parser l'objet enrichi
+            const TSharedPtr<FJsonObject>* ItemDataObj;
+            if (ItemObj->TryGetObjectField(TEXT("item"), ItemDataObj))
+            {
+                InvItem.Item.Id = (*ItemDataObj)->GetStringField(TEXT("id"));
+                InvItem.Item.Name = (*ItemDataObj)->GetStringField(TEXT("name"));
+                InvItem.Item.Description = (*ItemDataObj)->GetStringField(TEXT("description"));
+                InvItem.Item.MaxStack = (*ItemDataObj)->GetIntegerField(TEXT("maxStack"));
+                // Parser type et rarity...
+            }
+
+            Inventory.Items.Add(InvItem);
+        }
+    }
+
+    return Inventory;
+}
+```
+
+### Obtenir la liste des objets disponibles
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::GetAvailableItems()
+{
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("get_available_items"),
+        TEXT("{}"),
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                const TArray<TSharedPtr<FJsonValue>>* ItemsArray;
+                if (ResponseJson->TryGetArrayField(TEXT("items"), ItemsArray))
+                {
+                    TArray<FItem> AvailableItems;
+                    for (const TSharedPtr<FJsonValue>& ItemValue : *ItemsArray)
+                    {
+                        const TSharedPtr<FJsonObject>& ItemObj = ItemValue->AsObject();
+                        FItem Item;
+                        Item.Id = ItemObj->GetStringField(TEXT("id"));
+                        Item.Name = ItemObj->GetStringField(TEXT("name"));
+                        Item.Description = ItemObj->GetStringField(TEXT("description"));
+                        Item.MaxStack = ItemObj->GetIntegerField(TEXT("maxStack"));
+                        AvailableItems.Add(Item);
+                    }
+                    OnAvailableItemsLoaded.Broadcast(AvailableItems);
+                }
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+```
+
+### Exemple d'utilisation - Ramasser un objet
+
+```cpp
+// Quand le joueur ramasse un objet dans le monde
+void APickupActor::OnPickedUp(ACharacter* PickingCharacter)
+{
+    auto* Subsystem = GetGameInstance()->GetSubsystem<UHarryPotterGameInstanceSubsystem>();
+    if (Subsystem)
+    {
+        // Ajouter l'objet à l'inventaire
+        Subsystem->AddItemToInventory(
+            CurrentCharacterId,
+            ItemId, // Ex: "potion_health"
+            1
+        );
+
+        // Afficher notification
+        ShowNotification(FString::Printf(
+            TEXT("Objet ramassé : %s"), *ItemName
+        ));
+
+        // Détruire le pickup
+        Destroy();
+    }
+}
+```
+
+### Widget d'inventaire
+
+Créez un Widget Blueprint pour afficher l'inventaire:
+
+```
+Event Construct
+└─ Get Subsystem
+   └─ Get Character Inventory
+      └─ On Inventory Loaded
+         └─ For Each Item
+            └─ Create Item Slot Widget
+               ├─ Display Item Icon
+               ├─ Display Item Name
+               ├─ Display Quantity (si > 1)
+               └─ Display Rarity Border Color
+
+On Item Slot Clicked
+└─ Show Item Details Panel
+   ├─ Item Name
+   ├─ Item Description
+   ├─ Item Type & Rarity
+   ├─ Quantity / MaxStack
+   └─ Button "Utiliser" ou "Équiper"
+```
+
+### Exemple - Utiliser une potion
+
+```cpp
+void UInventoryWidget::OnUsePotion(const FString& ItemId, int32 Quantity)
+{
+    auto* Subsystem = GetGameInstance()->GetSubsystem<UHarryPotterGameInstanceSubsystem>();
+    if (Subsystem)
+    {
+        // Appliquer l'effet de la potion
+        if (ItemId == TEXT("potion_health"))
+        {
+            // Soigner le joueur
+            PlayerCharacter->Heal(50);
+        }
+        else if (ItemId == TEXT("potion_mana"))
+        {
+            // Restaurer la mana
+            PlayerCharacter->RestoreMana(100);
+        }
+
+        // Retirer la potion de l'inventaire
+        Subsystem->RemoveItemFromInventory(
+            CurrentCharacterId,
+            ItemId,
+            1 // Consommer 1 potion
+        );
+    }
+}
+```
+
+### Callbacks pour l'inventaire
+
+Ajoutez ces delegates au subsystem:
+
+```cpp
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryLoaded, FInventory, Inventory);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventoryUpdated, FInventory, Inventory);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAvailableItemsLoaded, const TArray<FItem>&, Items);
+
+UPROPERTY(BlueprintAssignable, Category = "Nakama|Inventory")
+FOnInventoryLoaded OnInventoryLoaded;
+
+UPROPERTY(BlueprintAssignable, Category = "Nakama|Inventory")
+FOnInventoryUpdated OnInventoryUpdated;
+
+UPROPERTY(BlueprintAssignable, Category = "Nakama|Inventory")
+FOnAvailableItemsLoaded OnAvailableItemsLoaded;
+```
+
 ## Exemple de flux complet
 
 ### Écran de sélection de personnage

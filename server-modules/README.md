@@ -24,6 +24,14 @@ Quatre maisons sont disponibles dans le MMO:
 
 À la création, chaque personnage commence avec **"Pas de Maison"** et peut ensuite être assigné à une maison via le RPC `assign_house`.
 
+### Système d'Inventaire
+
+Chaque personnage possède un inventaire persistant avec :
+- **19 objets prédéfinis** répartis en 6 catégories
+- **Empilement automatique** jusqu'à la limite maxStack
+- **5 niveaux de rareté** (common, uncommon, rare, epic, legendary)
+- **Catégories** : baguettes, potions, livres, équipement, ingrédients, consommables
+
 ## Compilation
 
 ```bash
@@ -341,6 +349,230 @@ Récupère l'historique des transactions de points.
 
 ---
 
+## RPCs - Système d'Inventaire
+
+### 11. add_item_to_inventory
+
+Ajoute un objet à l'inventaire d'un personnage.
+
+**Payload:**
+```json
+{
+  "characterId": "uuid-du-personnage",
+  "itemId": "wand_oak",
+  "quantity": 1
+}
+```
+
+**Champs:**
+- `characterId` (requis): ID du personnage
+- `itemId` (requis): ID de l'objet (doit exister dans la liste prédéfinie)
+- `quantity` (requis): Quantité à ajouter (> 0)
+
+**Réponse:**
+```json
+{
+  "inventory": {
+    "characterId": "uuid-du-personnage",
+    "items": [
+      {
+        "itemId": "wand_oak",
+        "quantity": 1,
+        "addedAt": 1234567890,
+        "item": {
+          "id": "wand_oak",
+          "name": "Baguette en Chêne",
+          "description": "Une baguette solide en bois de chêne",
+          "type": "wand",
+          "rarity": "common",
+          "maxStack": 1
+        }
+      }
+    ],
+    "updatedAt": 1234567890
+  },
+  "itemAdded": {
+    "id": "wand_oak",
+    "name": "Baguette en Chêne",
+    "description": "Une baguette solide en bois de chêne",
+    "type": "wand",
+    "rarity": "common",
+    "maxStack": 1
+  }
+}
+```
+
+### 12. remove_item_from_inventory
+
+Retire un objet de l'inventaire d'un personnage.
+
+**Payload:**
+```json
+{
+  "characterId": "uuid-du-personnage",
+  "itemId": "potion_health",
+  "quantity": 3
+}
+```
+
+**Champs:**
+- `characterId` (requis): ID du personnage
+- `itemId` (requis): ID de l'objet à retirer
+- `quantity` (requis): Quantité à retirer (> 0)
+
+**Réponse:**
+```json
+{
+  "inventory": {
+    "characterId": "uuid-du-personnage",
+    "items": [
+      {
+        "itemId": "potion_health",
+        "quantity": 7,
+        "addedAt": 1234567890,
+        "item": {
+          "id": "potion_health",
+          "name": "Potion de Soin",
+          "description": "Restaure les points de vie",
+          "type": "potion",
+          "rarity": "common",
+          "maxStack": 20
+        }
+      }
+    ],
+    "updatedAt": 1234567895
+  },
+  "itemRemoved": {
+    "id": "potion_health",
+    "name": "Potion de Soin",
+    "description": "Restaure les points de vie",
+    "type": "potion",
+    "rarity": "common",
+    "maxStack": 20
+  }
+}
+```
+
+### 13. get_character_inventory
+
+Récupère l'inventaire complet d'un personnage.
+
+**Payload:**
+```json
+{
+  "characterId": "uuid-du-personnage"
+}
+```
+
+**Réponse:**
+```json
+{
+  "characterId": "uuid-du-personnage",
+  "items": [
+    {
+      "itemId": "wand_elder",
+      "quantity": 1,
+      "addedAt": 1234567890,
+      "item": {
+        "id": "wand_elder",
+        "name": "Baguette de Sureau",
+        "description": "La baguette la plus puissante jamais créée",
+        "type": "wand",
+        "rarity": "legendary",
+        "maxStack": 1
+      }
+    },
+    {
+      "itemId": "potion_felix",
+      "quantity": 2,
+      "addedAt": 1234567891,
+      "item": {
+        "id": "potion_felix",
+        "name": "Felix Felicis",
+        "description": "Potion de chance liquide",
+        "type": "potion",
+        "rarity": "legendary",
+        "maxStack": 5
+      }
+    }
+  ],
+  "updatedAt": 1234567895
+}
+```
+
+### 14. get_available_items
+
+Récupère la liste de tous les objets disponibles dans le jeu.
+
+**Payload:** `{}` (vide ou non requis)
+
+**Réponse:**
+```json
+{
+  "items": [
+    {
+      "id": "wand_oak",
+      "name": "Baguette en Chêne",
+      "description": "Une baguette solide en bois de chêne",
+      "type": "wand",
+      "rarity": "common",
+      "maxStack": 1
+    },
+    {
+      "id": "wand_elder",
+      "name": "Baguette de Sureau",
+      "description": "La baguette la plus puissante jamais créée",
+      "type": "wand",
+      "rarity": "legendary",
+      "maxStack": 1
+    },
+    {
+      "id": "potion_health",
+      "name": "Potion de Soin",
+      "description": "Restaure les points de vie",
+      "type": "potion",
+      "rarity": "common",
+      "maxStack": 20
+    }
+  ]
+}
+```
+
+**Liste complète des objets (19 objets):**
+
+**Baguettes (wand):**
+- `wand_oak` - Baguette en Chêne (common, max 1)
+- `wand_elder` - Baguette de Sureau (legendary, max 1)
+- `wand_phoenix` - Baguette Plume de Phénix (epic, max 1)
+
+**Potions (potion):**
+- `potion_health` - Potion de Soin (common, max 20)
+- `potion_mana` - Potion de Mana (common, max 20)
+- `potion_felix` - Felix Felicis (legendary, max 5)
+- `potion_polyjuice` - Polynectar (rare, max 10)
+
+**Livres (book):**
+- `book_spells_basic` - Manuel de Sorts de Base (common, max 5)
+- `book_potions_advanced` - Potions Avancées (rare, max 3)
+- `book_defense` - Défense contre les Forces du Mal (uncommon, max 5)
+
+**Équipement (equipment):**
+- `equipment_robe` - Robe de Sorcier (common, max 1)
+- `equipment_hat` - Chapeau Pointu (common, max 1)
+- `equipment_cloak_invisibility` - Cape d'Invisibilité (legendary, max 1)
+
+**Ingrédients (ingredient):**
+- `ingredient_dragon_scale` - Écaille de Dragon (rare, max 99)
+- `ingredient_unicorn_hair` - Crin de Licorne (epic, max 99)
+- `ingredient_mandrake_root` - Racine de Mandragore (uncommon, max 99)
+
+**Consommables (consumable):**
+- `consumable_chocolate_frog` - Chocogrenouille (common, max 50)
+- `consumable_bertie_beans` - Dragées Surprises de Bertie Crochue (common, max 50)
+- `consumable_pumpkin_juice` - Jus de Citrouille (common, max 30)
+
+---
+
 ## Limites
 
 ### Personnages
@@ -356,9 +588,19 @@ Récupère l'historique des transactions de points.
 - **Maisons valides pour les points:** Venatrix, Falcon, Brumval, Aerwyn (pas "Pas de Maison")
 - **Historique:** Limite par défaut de 50 transactions
 
+### Inventaire
+- **Quantité:** > 0
+- **ItemId:** Doit exister dans la liste prédéfinie (19 objets disponibles)
+- **MaxStack:** Varie selon le type d'objet (1 pour baguettes, jusqu'à 99 pour ingrédients)
+- **Objets empilables:** Les objets identiques s'empilent automatiquement jusqu'à maxStack
+- **Catégories:** wand, potion, book, equipment, ingredient, consumable
+- **Raretés:** common, uncommon, rare, epic, legendary
+
 ## Sécurité
 
 - Tous les RPCs nécessitent une authentification
 - Les personnages sont stockés avec des permissions privées (lecture/écriture réservées au propriétaire)
 - Les points de maison et l'historique sont en lecture publique mais écriture interdite aux clients
+- Les inventaires sont stockés avec des permissions privées (lecture/écriture réservées au propriétaire)
 - Validation des entrées côté serveur
+- Vérification de l'existence des objets dans la liste prédéfinie
