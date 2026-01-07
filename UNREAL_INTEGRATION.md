@@ -508,6 +508,227 @@ void UHarryPotterGameInstanceSubsystem::AutoAssignHouseBasedOnStats(const FStrin
 }
 ```
 
+## Système de Points de Maison
+
+### Ajouter des points à une maison
+
+Lorsqu'un joueur réalise une bonne action:
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::AddHousePoints(
+    const FString& House,
+    int32 Amount,
+    const FString& CharacterName,
+    const FString& Reason)
+{
+    if (!CurrentSession)
+    {
+        OnError.Broadcast("Non authentifié");
+        return;
+    }
+
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("house"), House);
+    JsonObject->SetNumberField(TEXT("amount"), Amount);
+    if (!CharacterName.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("characterName"), CharacterName);
+    }
+    JsonObject->SetStringField(TEXT("reason"), Reason);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("add_house_points"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            // Points ajoutés avec succès
+            UE_LOG(LogTemp, Log, TEXT("Points de maison ajoutés"));
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+```
+
+### Retirer des points
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::RemoveHousePoints(
+    const FString& House,
+    int32 Amount,
+    const FString& CharacterName,
+    const FString& Reason)
+{
+    // Similaire à AddHousePoints mais avec "remove_house_points"
+}
+```
+
+### Afficher le classement des maisons
+
+```cpp
+USTRUCT(BlueprintType)
+struct FHouseRanking
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FString House;
+
+    UPROPERTY(BlueprintReadWrite)
+    int32 Points;
+
+    UPROPERTY(BlueprintReadWrite)
+    int64 UpdatedAt;
+};
+
+void UHarryPotterGameInstanceSubsystem::GetHouseRankings()
+{
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("get_house_rankings"),
+        TEXT("{}"),
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                const TArray<TSharedPtr<FJsonValue>>* RankingsArray;
+                if (ResponseJson->TryGetArrayField(TEXT("rankings"), RankingsArray))
+                {
+                    TArray<FHouseRanking> Rankings;
+                    for (const TSharedPtr<FJsonValue>& RankValue : *RankingsArray)
+                    {
+                        const TSharedPtr<FJsonObject>& RankObj = RankValue->AsObject();
+                        FHouseRanking Ranking;
+                        Ranking.House = RankObj->GetStringField(TEXT("house"));
+                        Ranking.Points = RankObj->GetIntegerField(TEXT("points"));
+                        Ranking.UpdatedAt = RankObj->GetNumberField(TEXT("updatedAt"));
+                        Rankings.Add(Ranking);
+                    }
+                    OnHouseRankingsLoaded.Broadcast(Rankings);
+                }
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+```
+
+### Widget de classement des maisons
+
+Créez un Widget Blueprint pour afficher le classement en temps réel:
+
+```
+Event Construct
+└─ Get Subsystem
+   └─ Get House Rankings
+      └─ On Rankings Loaded
+         └─ For Each Ranking
+            └─ Create Ranking Entry Widget
+               ├─ Display House Name
+               ├─ Display Points
+               └─ Display Position/Medal
+
+Set Timer by Event (60 seconds, looping)
+└─ Refresh Rankings
+```
+
+### Exemple d'utilisation - Récompenser un joueur
+
+```cpp
+// Quand un joueur termine une quête
+void AQuestManager::OnQuestCompleted(const FString& CharacterName, const FString& House)
+{
+    auto* Subsystem = GetGameInstance()->GetSubsystem<UHarryPotterGameInstanceSubsystem>();
+    if (Subsystem && House != TEXT("Pas de Maison"))
+    {
+        Subsystem->AddHousePoints(
+            House,
+            10,
+            CharacterName,
+            TEXT("Quête principale terminée")
+        );
+
+        // Afficher notification
+        ShowNotification(FString::Printf(
+            TEXT("+10 points pour %s !"), *House
+        ));
+    }
+}
+```
+
+### Historique des transactions
+
+```cpp
+USTRUCT(BlueprintType)
+struct FHousePointsTransaction
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Id;
+
+    UPROPERTY(BlueprintReadWrite)
+    FString House;
+
+    UPROPERTY(BlueprintReadWrite)
+    int32 Amount;
+
+    UPROPERTY(BlueprintReadWrite)
+    FString CharacterName;
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Reason;
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Type; // "add" or "remove"
+
+    UPROPERTY(BlueprintReadWrite)
+    int64 Timestamp;
+};
+
+void UHarryPotterGameInstanceSubsystem::GetHousePointsHistory(const FString& House, int32 Limit)
+{
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    if (!House.IsEmpty())
+    {
+        JsonObject->SetStringField(TEXT("house"), House);
+    }
+    JsonObject->SetNumberField(TEXT("limit"), Limit);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("get_house_points_history"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            // Parser l'historique et afficher
+            UE_LOG(LogTemp, Log, TEXT("Historique récupéré"));
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+```
+
 ## Exemple de flux complet
 
 ### Écran de sélection de personnage

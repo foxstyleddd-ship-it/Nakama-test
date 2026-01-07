@@ -43,6 +43,16 @@ Quatre maisons personnalisées pour votre univers:
 
 Chaque personnage commence avec **"Pas de Maison"** et peut être assigné à une maison via une cérémonie de répartition dans votre jeu.
 
+### 🏆 Système de Points de Maison
+
+Compétition entre les maisons avec un système complet de points:
+- **Ajout/retrait de points** avec raison et personnage (optionnel)
+- **Classement en temps réel** des maisons
+- **Historique complet** de toutes les transactions
+- **Stockage persistant** des scores
+
+Utilisez ce système pour récompenser les bonnes actions et pénaliser les infractions, créant ainsi une compétition dynamique entre les maisons!
+
 📖 **[Guide d'intégration Unreal Engine complet →](UNREAL_INTEGRATION.md)**
 
 ## Prérequis
@@ -174,6 +184,13 @@ Client->RPC(Session, TEXT("assign_house"),
 // Mettre à jour (niveau/XP)
 Client->RPC(Session, TEXT("update_character"),
     TEXT("{\"characterId\":\"xxx\",\"level\":5,\"xp\":1250}"), ...);
+
+// Ajouter des points à une maison
+Client->RPC(Session, TEXT("add_house_points"),
+    TEXT("{\"house\":\"Venatrix\",\"amount\":10,\"characterName\":\"Harry\",\"reason\":\"Courage\"}"), ...);
+
+// Obtenir le classement des maisons
+Client->RPC(Session, TEXT("get_house_rankings"), TEXT("{}"), ...);
 ```
 
 ## Logs
@@ -253,11 +270,12 @@ npm run watch
 
 Vous pouvez facilement étendre le système pour ajouter:
 - ✅ **Maisons** (déjà implémenté: Venatrix, Falcon, Brumval, Aerwyn)
+- ✅ **Points de maison** (déjà implémenté: ajout/retrait, classement, historique)
 - Inventaire (baguettes, potions)
 - Sorts appris
 - Quêtes complétées
 - Statistiques de jeu
-- Points de maison (système de compétition entre maisons)
+- Récompenses automatiques pour les maisons gagnantes
 
 Consultez `server-modules/README.md` pour plus de détails.
 
