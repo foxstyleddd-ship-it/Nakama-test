@@ -76,7 +76,7 @@ interface GetHousePointsHistoryRequest {
 }
 
 // Système d'inventaire
-type ItemType = "wand" | "potion" | "book" | "equipment" | "ingredient" | "quest" | "consumable";
+type ItemType = "wand" | "potion" | "book" | "equipment" | "ingredient" | "quest" | "consumable" | "notebook";
 type ItemRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 interface Item {
@@ -156,11 +156,62 @@ interface GetCharacterSpellsRequest {
   characterId: string;
 }
 
+// Système de carnets de notes
+type NotebookSubject =
+  | "Défense contre les forces du mal"
+  | "Potions"
+  | "Sortilèges"
+  | "Botanique"
+  | "Histoire de la magie"
+  | "Métamorphose"
+  | "Astronomie"
+  | "Divination"
+  | "Soins aux créatures magiques"
+  | "Vol sur balai"
+  | "Notes personnelles";
+
+interface Notebook {
+  id: string;
+  characterId: string;
+  title: string;
+  content: string;
+  subject: NotebookSubject;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface CreateNotebookRequest {
+  characterId: string;
+  title: string;
+  content: string;
+  subject: NotebookSubject;
+}
+
+interface UpdateNotebookRequest {
+  notebookId: string;
+  title?: string;
+  content?: string;
+  subject?: NotebookSubject;
+}
+
+interface DeleteNotebookRequest {
+  notebookId: string;
+}
+
+interface GetNotebookRequest {
+  notebookId: string;
+}
+
+interface GetCharacterNotebooksRequest {
+  characterId: string;
+}
+
 const COLLECTION_CHARACTERS = "characters";
 const COLLECTION_HOUSE_POINTS = "house_points";
 const COLLECTION_HOUSE_POINTS_HISTORY = "house_points_history";
 const COLLECTION_INVENTORY = "character_inventory";
 const COLLECTION_SPELLS = "character_spells";
+const COLLECTION_NOTEBOOKS = "character_notebooks";
 const MAX_CHARACTERS_PER_ACCOUNT = 10;
 const PLAYABLE_HOUSES: House[] = ["Venatrix", "Falcon", "Brumval", "Aerwyn"];
 const MAX_SPELL_LEVEL = 3;
@@ -198,6 +249,9 @@ const PREDEFINED_ITEMS: Item[] = [
   // Consommables
   { id: "food_chocolate", name: "Chocogrenouille", description: "Friandise magique au chocolat", type: "consumable", rarity: "common", maxStack: 50 },
   { id: "food_beans", name: "Dragées Surprises de Bertie Crochue", description: "Bonbons aux saveurs surprenantes", type: "consumable", rarity: "common", maxStack: 50 },
+
+  // Carnets de notes
+  { id: "notebook_basic", name: "Carnet de Notes", description: "Un carnet pour prendre des notes de cours", type: "notebook", rarity: "common", maxStack: 10 },
 ];
 
 // Liste des sorts prédéfinis
@@ -265,10 +319,17 @@ function InitModule(ctx: nkruntime.Context, logger: nkruntime.Logger, nk: nkrunt
   initializer.registerRpc("get_character_spells", rpcGetCharacterSpells);
   initializer.registerRpc("get_available_spells", rpcGetAvailableSpells);
 
+  // Enregistrement des RPCs - Carnets de notes
+  initializer.registerRpc("create_notebook", rpcCreateNotebook);
+  initializer.registerRpc("get_notebook", rpcGetNotebook);
+  initializer.registerRpc("get_character_notebooks", rpcGetCharacterNotebooks);
+  initializer.registerRpc("update_notebook", rpcUpdateNotebook);
+  initializer.registerRpc("delete_notebook", rpcDeleteNotebook);
+
   // Initialiser les points de maison à 0
   initializeHousePoints(nk, logger);
 
-  logger.info("Module de gestion des personnages Harry Potter initialisé avec système de maisons, points, inventaire et sorts");
+  logger.info("Module de gestion des personnages Harry Potter initialisé avec système de maisons, points, inventaire, sorts et carnets");
 }
 
 /**
@@ -1433,6 +1494,269 @@ function rpcGetAvailableSpells(
   logger.info("Liste des sorts disponibles récupérée: %d sorts", PREDEFINED_SPELLS.length);
 
   return JSON.stringify({ spells: PREDEFINED_SPELLS });
+}
+
+// ============================================================================
+// SYSTÈME DE CARNETS DE NOTES
+// ============================================================================
+
+/**
+ * RPC: Créer un nouveau carnet de notes
+ */
+function rpcCreateNotebook(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: CreateNotebookRequest = JSON.parse(payload);
+
+  // Validation
+  if (!request.characterId) {
+    throw Error("ID du personnage requis");
+  }
+
+  if (!request.title || request.title.trim().length === 0) {
+    throw Error("Titre requis");
+  }
+
+  if (!request.subject) {
+    throw Error("Matière requise");
+  }
+
+  // Vérifier que le personnage appartient à l'utilisateur
+  const characterObjects = nk.storageRead([{
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+  }]);
+
+  if (characterObjects.length === 0) {
+    throw Error("Personnage non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  // Créer le carnet
+  const now = Date.now();
+  const notebookId = nk.uuidv4();
+
+  const notebook: Notebook = {
+    id: notebookId,
+    characterId: request.characterId,
+    title: request.title.trim(),
+    content: request.content || "",
+    subject: request.subject,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // Sauvegarder le carnet
+  nk.storageWrite([{
+    collection: COLLECTION_NOTEBOOKS,
+    key: notebookId,
+    userId: ctx.userId,
+    value: notebook,
+    permissionRead: 1,
+    permissionWrite: 0,
+  }]);
+
+  logger.info(
+    "Carnet créé: %s (%s) pour le personnage %s",
+    notebook.title,
+    notebook.subject,
+    request.characterId
+  );
+
+  return JSON.stringify(notebook);
+}
+
+/**
+ * RPC: Récupérer un carnet de notes
+ */
+function rpcGetNotebook(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: GetNotebookRequest = JSON.parse(payload);
+
+  if (!request.notebookId) {
+    throw Error("ID du carnet requis");
+  }
+
+  // Récupérer le carnet
+  const notebooks = nk.storageRead([{
+    collection: COLLECTION_NOTEBOOKS,
+    key: request.notebookId,
+    userId: ctx.userId,
+  }]);
+
+  if (notebooks.length === 0) {
+    throw Error("Carnet non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  logger.info("Carnet récupéré: %s", request.notebookId);
+
+  return JSON.stringify(notebooks[0].value);
+}
+
+/**
+ * RPC: Récupérer tous les carnets d'un personnage
+ */
+function rpcGetCharacterNotebooks(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: GetCharacterNotebooksRequest = JSON.parse(payload);
+
+  if (!request.characterId) {
+    throw Error("ID du personnage requis");
+  }
+
+  // Vérifier que le personnage appartient à l'utilisateur
+  const characterObjects = nk.storageRead([{
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+  }]);
+
+  if (characterObjects.length === 0) {
+    throw Error("Personnage non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  // Récupérer tous les carnets du personnage
+  const notebooksList = nk.storageList(ctx.userId, COLLECTION_NOTEBOOKS, 100);
+
+  // Filtrer les carnets appartenant au personnage
+  const notebooks = notebooksList
+    .map(obj => obj.value as Notebook)
+    .filter(notebook => notebook.characterId === request.characterId);
+
+  logger.info(
+    "Carnets récupérés pour le personnage %s: %d carnets",
+    request.characterId,
+    notebooks.length
+  );
+
+  return JSON.stringify({ notebooks });
+}
+
+/**
+ * RPC: Mettre à jour un carnet de notes
+ */
+function rpcUpdateNotebook(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: UpdateNotebookRequest = JSON.parse(payload);
+
+  if (!request.notebookId) {
+    throw Error("ID du carnet requis");
+  }
+
+  // Récupérer le carnet existant
+  const notebooks = nk.storageRead([{
+    collection: COLLECTION_NOTEBOOKS,
+    key: request.notebookId,
+    userId: ctx.userId,
+  }]);
+
+  if (notebooks.length === 0) {
+    throw Error("Carnet non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  const notebook = notebooks[0].value as Notebook;
+
+  // Mettre à jour les champs
+  if (request.title !== undefined) {
+    notebook.title = request.title.trim();
+  }
+
+  if (request.content !== undefined) {
+    notebook.content = request.content;
+  }
+
+  if (request.subject !== undefined) {
+    notebook.subject = request.subject;
+  }
+
+  notebook.updatedAt = Date.now();
+
+  // Sauvegarder les modifications
+  nk.storageWrite([{
+    collection: COLLECTION_NOTEBOOKS,
+    key: request.notebookId,
+    userId: ctx.userId,
+    value: notebook,
+    permissionRead: 1,
+    permissionWrite: 0,
+  }]);
+
+  logger.info("Carnet mis à jour: %s", request.notebookId);
+
+  return JSON.stringify(notebook);
+}
+
+/**
+ * RPC: Supprimer un carnet de notes
+ */
+function rpcDeleteNotebook(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: DeleteNotebookRequest = JSON.parse(payload);
+
+  if (!request.notebookId) {
+    throw Error("ID du carnet requis");
+  }
+
+  // Vérifier que le carnet existe et appartient à l'utilisateur
+  const notebooks = nk.storageRead([{
+    collection: COLLECTION_NOTEBOOKS,
+    key: request.notebookId,
+    userId: ctx.userId,
+  }]);
+
+  if (notebooks.length === 0) {
+    throw Error("Carnet non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  // Supprimer le carnet
+  nk.storageDelete([{
+    collection: COLLECTION_NOTEBOOKS,
+    key: request.notebookId,
+    userId: ctx.userId,
+  }]);
+
+  logger.info("Carnet supprimé: %s", request.notebookId);
+
+  return JSON.stringify({ success: true, notebookId: request.notebookId });
 }
 
 // Point d'entrée du module

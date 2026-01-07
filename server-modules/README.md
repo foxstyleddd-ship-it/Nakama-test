@@ -41,6 +41,15 @@ Chaque personnage peut apprendre et améliorer des sorts :
 - **7 éléments** : feu, glace, foudre, nature, lumière, ténèbres, neutre
 - **Sorts célèbres** : Expelliarmus, Protego, Stupefix, Incendio, et bien d'autres
 
+### Système de Carnets de Notes
+
+Chaque personnage peut créer et gérer des carnets de notes :
+- **Titre et contenu** personnalisables
+- **11 matières** disponibles (Défense contre les forces du mal, Potions, Sortilèges, etc.)
+- **Stockage persistant** par personnage
+- **Modification complète** du titre, contenu et matière
+- **Organisation par cours** pour faciliter l'apprentissage
+
 ## Compilation
 
 ```bash
@@ -784,6 +793,169 @@ Récupère la liste de tous les sorts disponibles dans le jeu.
 
 ---
 
+## RPCs - Système de Carnets de Notes
+
+### 19. create_notebook
+
+Crée un nouveau carnet de notes pour un personnage.
+
+**Payload:**
+```json
+{
+  "characterId": "uuid-du-personnage",
+  "title": "Notes de Défense contre les forces du mal",
+  "content": "Leçon du jour : Le sortilège du Patronus...",
+  "subject": "Défense contre les forces du mal"
+}
+```
+
+**Champs:**
+- `characterId` (requis): ID du personnage
+- `title` (requis): Titre du carnet
+- `content` (optionnel): Contenu texte du carnet
+- `subject` (requis): Matière du carnet
+
+**Matières disponibles:**
+- "Défense contre les forces du mal"
+- "Potions"
+- "Sortilèges"
+- "Botanique"
+- "Histoire de la magie"
+- "Métamorphose"
+- "Astronomie"
+- "Divination"
+- "Soins aux créatures magiques"
+- "Vol sur balai"
+- "Notes personnelles"
+
+**Réponse:**
+```json
+{
+  "id": "uuid-carnet",
+  "characterId": "uuid-du-personnage",
+  "title": "Notes de Défense contre les forces du mal",
+  "content": "Leçon du jour : Le sortilège du Patronus...",
+  "subject": "Défense contre les forces du mal",
+  "createdAt": 1234567890,
+  "updatedAt": 1234567890
+}
+```
+
+### 20. get_notebook
+
+Récupère un carnet de notes spécifique.
+
+**Payload:**
+```json
+{
+  "notebookId": "uuid-carnet"
+}
+```
+
+**Réponse:**
+```json
+{
+  "id": "uuid-carnet",
+  "characterId": "uuid-du-personnage",
+  "title": "Notes de Défense contre les forces du mal",
+  "content": "Leçon du jour : Le sortilège du Patronus...",
+  "subject": "Défense contre les forces du mal",
+  "createdAt": 1234567890,
+  "updatedAt": 1234567890
+}
+```
+
+### 21. get_character_notebooks
+
+Récupère tous les carnets de notes d'un personnage.
+
+**Payload:**
+```json
+{
+  "characterId": "uuid-du-personnage"
+}
+```
+
+**Réponse:**
+```json
+{
+  "notebooks": [
+    {
+      "id": "uuid-carnet-1",
+      "characterId": "uuid-du-personnage",
+      "title": "Notes de Potions",
+      "content": "Recette du Polynectar...",
+      "subject": "Potions",
+      "createdAt": 1234567890,
+      "updatedAt": 1234567890
+    },
+    {
+      "id": "uuid-carnet-2",
+      "characterId": "uuid-du-personnage",
+      "title": "Sortilèges de lévitation",
+      "content": "Wingardium Leviosa nécessite...",
+      "subject": "Sortilèges",
+      "createdAt": 1234567900,
+      "updatedAt": 1234567920
+    }
+  ]
+}
+```
+
+### 22. update_notebook
+
+Met à jour un carnet de notes existant.
+
+**Payload:**
+```json
+{
+  "notebookId": "uuid-carnet",
+  "title": "Notes de Défense - Mise à jour",
+  "content": "Le Patronus prend la forme d'un animal...",
+  "subject": "Défense contre les forces du mal"
+}
+```
+
+**Champs:**
+- `notebookId` (requis): ID du carnet
+- `title` (optionnel): Nouveau titre
+- `content` (optionnel): Nouveau contenu
+- `subject` (optionnel): Nouvelle matière
+
+**Réponse:**
+```json
+{
+  "id": "uuid-carnet",
+  "characterId": "uuid-du-personnage",
+  "title": "Notes de Défense - Mise à jour",
+  "content": "Le Patronus prend la forme d'un animal...",
+  "subject": "Défense contre les forces du mal",
+  "createdAt": 1234567890,
+  "updatedAt": 1234567950
+}
+```
+
+### 23. delete_notebook
+
+Supprime un carnet de notes.
+
+**Payload:**
+```json
+{
+  "notebookId": "uuid-carnet"
+}
+```
+
+**Réponse:**
+```json
+{
+  "success": true,
+  "notebookId": "uuid-carnet"
+}
+```
+
+---
+
 ## Limites
 
 ### Personnages
@@ -816,6 +988,14 @@ Récupère la liste de tous les sorts disponibles dans le jeu.
 - **Éléments:** fire, ice, lightning, nature, light, dark, neutral
 - **Pas de limite** sur le nombre de sorts qu'un personnage peut apprendre
 
+### Carnets de Notes
+- **Titre:** Obligatoire, non vide
+- **Contenu:** Optionnel, texte libre (pas de limite de taille)
+- **Matière:** Obligatoire, doit être l'une des 11 matières disponibles
+- **Limite:** Pas de limite sur le nombre de carnets par personnage
+- **Modifications:** Tous les champs sont modifiables après création
+- **Stockage:** Chaque carnet est identifié par un UUID unique
+
 ## Sécurité
 
 - Tous les RPCs nécessitent une authentification
@@ -823,5 +1003,7 @@ Récupère la liste de tous les sorts disponibles dans le jeu.
 - Les points de maison et l'historique sont en lecture publique mais écriture interdite aux clients
 - Les inventaires sont stockés avec des permissions privées (lecture/écriture réservées au propriétaire)
 - Les sorts sont stockés avec des permissions privées (lecture/écriture réservées au propriétaire)
+- Les carnets de notes sont stockés avec des permissions privées (lecture/écriture réservées au propriétaire)
 - Validation des entrées côté serveur
 - Vérification de l'existence des objets et sorts dans les listes prédéfinies
+- Validation des matières pour les carnets de notes
