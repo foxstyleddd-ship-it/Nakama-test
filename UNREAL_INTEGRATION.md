@@ -54,6 +54,9 @@ struct FCharacterData
     int32 XP;
 
     UPROPERTY(BlueprintReadWrite)
+    FString House;
+
+    UPROPERTY(BlueprintReadWrite)
     int64 CreatedAt;
 
     UPROPERTY(BlueprintReadWrite)
@@ -86,6 +89,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Nakama|Characters")
     void DeleteCharacter(const FString& CharacterId);
 
+    UFUNCTION(BlueprintCallable, Category = "Nakama|Characters")
+    void AssignHouse(const FString& CharacterId, const FString& House);
+
     // Callbacks
     DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAuthSuccess, UNakamaSession*, Session);
     DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAuthError, const FString&, ErrorMessage);
@@ -93,6 +99,7 @@ public:
     DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharactersLoaded, const TArray<FCharacterData>&, Characters);
     DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterUpdated, FCharacterData, Character);
     DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCharacterDeleted);
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHouseAssigned, FCharacterData, Character);
     DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnError, const FString&, ErrorMessage);
 
     UPROPERTY(BlueprintAssignable)
@@ -112,6 +119,9 @@ public:
 
     UPROPERTY(BlueprintAssignable)
     FOnCharacterDeleted OnCharacterDeleted;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnHouseAssigned OnHouseAssigned;
 
     UPROPERTY(BlueprintAssignable)
     FOnError OnError;
@@ -339,6 +349,54 @@ void UHarryPotterGameInstanceSubsystem::DeleteCharacter(const FString& Character
     );
 }
 
+void UHarryPotterGameInstanceSubsystem::AssignHouse(const FString& CharacterId, const FString& House)
+{
+    if (!CurrentSession)
+    {
+        OnError.Broadcast("Non authentifié");
+        return;
+    }
+
+    // Valider la maison
+    TArray<FString> ValidHouses = {TEXT("Pas de Maison"), TEXT("Venatrix"), TEXT("Falcon"), TEXT("Brumval"), TEXT("Aerwyn")};
+    if (!ValidHouses.Contains(House))
+    {
+        OnError.Broadcast("Maison invalide. Maisons valides: Venatrix, Falcon, Brumval, Aerwyn, Pas de Maison");
+        return;
+    }
+
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("characterId"), CharacterId);
+    JsonObject->SetStringField(TEXT("house"), House);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("assign_house"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                FCharacterData Character = ParseCharacterJson(ResponseJson);
+                OnHouseAssigned.Broadcast(Character);
+                UE_LOG(LogTemp, Log, TEXT("Maison assignée: %s pour %s"), *Character.House, *Character.Name);
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+            UE_LOG(LogTemp, Error, TEXT("Erreur assignation maison: %s"), *Error.Message);
+        }
+    );
+}
+
 FCharacterData UHarryPotterGameInstanceSubsystem::ParseCharacterJson(const TSharedPtr<FJsonObject>& JsonObject)
 {
     FCharacterData Character;
@@ -346,6 +404,7 @@ FCharacterData UHarryPotterGameInstanceSubsystem::ParseCharacterJson(const TShar
     Character.Name = JsonObject->GetStringField(TEXT("name"));
     Character.Level = JsonObject->GetIntegerField(TEXT("level"));
     Character.XP = JsonObject->GetIntegerField(TEXT("xp"));
+    Character.House = JsonObject->GetStringField(TEXT("house"));
     Character.CreatedAt = JsonObject->GetNumberField(TEXT("createdAt"));
     Character.UpdatedAt = JsonObject->GetNumberField(TEXT("updatedAt"));
     return Character;
@@ -389,10 +448,64 @@ Get Subsystem → Update Character
   └─ New XP: 1250
 ```
 
-### 5. Supprimer un personnage
+### 5. Assigner une maison
+
+```
+Get Subsystem → Assign House
+  ├─ Character Id: "uuid-du-personnage"
+  └─ House: "Venatrix"
+```
+
+**Maisons disponibles:**
+- `"Venatrix"`
+- `"Falcon"`
+- `"Brumval"`
+- `"Aerwyn"`
+- `"Pas de Maison"`
+
+Bind l'événement `OnHouseAssigned` pour recevoir la confirmation.
+
+### 6. Supprimer un personnage
 
 ```
 Get Subsystem → Delete Character → "uuid-du-personnage"
+```
+
+## Système de Maisons
+
+### Cérémonie de Répartition
+
+Vous pouvez créer une scène de "répartition" où le joueur choisit ou se voit assigner une maison:
+
+**Exemple de Widget Blueprint pour la répartition:**
+
+1. **Afficher les 4 maisons** avec leurs descriptions
+2. **Bouton pour chaque maison:**
+   ```
+   On Clicked (Bouton Venatrix)
+   └─ Get Subsystem
+      └─ Assign House
+         ├─ Character Id: [Selected Character Id]
+         └─ House: "Venatrix"
+         └─ On House Assigned
+            └─ Show Success Message
+            └─ Transition to Game
+   ```
+
+### Répartition automatique (Choixpeau magique)
+
+Pour une répartition aléatoire basée sur des critères:
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::AutoAssignHouseBasedOnStats(const FString& CharacterId)
+{
+    // Exemple: basé sur des stats du personnage ou aléatoire
+    TArray<FString> Houses = {TEXT("Venatrix"), TEXT("Falcon"), TEXT("Brumval"), TEXT("Aerwyn")};
+    int32 RandomIndex = FMath::RandRange(0, Houses.Num() - 1);
+    FString SelectedHouse = Houses[RandomIndex];
+
+    AssignHouse(CharacterId, SelectedHouse);
+}
 ```
 
 ## Exemple de flux complet

@@ -21,6 +21,7 @@ Le serveur inclut un système complet pour gérer les personnages de votre MMO:
 - **Création de personnages** (max 10 par compte)
 - **Stockage persistant** des données
 - **Gestion du niveau et de l'XP**
+- **Système de maisons** (Venatrix, Falcon, Brumval, Aerwyn)
 - **Mise à jour en temps réel**
 - **Suppression de personnages**
 
@@ -29,7 +30,18 @@ Chaque personnage contient:
 - Nom (2-20 caractères)
 - Niveau (1-100)
 - Points d'expérience (XP)
+- Maison (assignable après création)
 - Timestamps de création et modification
+
+### 🏰 Système de Maisons
+
+Quatre maisons personnalisées pour votre univers:
+- **Venatrix** - Pour les chasseurs et stratèges
+- **Falcon** - Pour les courageux et audacieux
+- **Brumval** - Pour les loyaux et patients
+- **Aerwyn** - Pour les sages et créatifs
+
+Chaque personnage commence avec **"Pas de Maison"** et peut être assigné à une maison via une cérémonie de répartition dans votre jeu.
 
 📖 **[Guide d'intégration Unreal Engine complet →](UNREAL_INTEGRATION.md)**
 
@@ -155,6 +167,10 @@ Client->RPC(Session, TEXT("create_character"), TEXT("{\"name\":\"Harry Potter\"}
 // Récupérer tous les personnages
 Client->RPC(Session, TEXT("get_characters"), TEXT("{}"), ...);
 
+// Assigner une maison
+Client->RPC(Session, TEXT("assign_house"),
+    TEXT("{\"characterId\":\"xxx\",\"house\":\"Venatrix\"}"), ...);
+
 // Mettre à jour (niveau/XP)
 Client->RPC(Session, TEXT("update_character"),
     TEXT("{\"characterId\":\"xxx\",\"level\":5,\"xp\":1250}"), ...);
@@ -236,11 +252,12 @@ npm run watch
 ### Ajouter de nouvelles fonctionnalités
 
 Vous pouvez facilement étendre le système pour ajouter:
-- Maisons de Poudlard (Gryffondor, Serpentard, etc.)
+- ✅ **Maisons** (déjà implémenté: Venatrix, Falcon, Brumval, Aerwyn)
 - Inventaire (baguettes, potions)
 - Sorts appris
 - Quêtes complétées
 - Statistiques de jeu
+- Points de maison (système de compétition entre maisons)
 
 Consultez `server-modules/README.md` pour plus de détails.
 

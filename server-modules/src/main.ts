@@ -3,11 +3,18 @@
  * Gestion des personnages par compte utilisateur
  */
 
+// Maisons disponibles dans le MMO Harry Potter
+type House = "Pas de Maison" | "Venatrix" | "Falcon" | "Brumval" | "Aerwyn";
+
+const VALID_HOUSES: House[] = ["Pas de Maison", "Venatrix", "Falcon", "Brumval", "Aerwyn"];
+const DEFAULT_HOUSE: House = "Pas de Maison";
+
 interface Character {
   id: string;
   name: string;
   level: number;
   xp: number;
+  house: House;
   createdAt: number;
   updatedAt: number;
 }
@@ -21,6 +28,11 @@ interface UpdateCharacterRequest {
   level?: number;
   xp?: number;
   name?: string;
+}
+
+interface AssignHouseRequest {
+  characterId: string;
+  house: House;
 }
 
 interface DeleteCharacterRequest {
@@ -40,8 +52,9 @@ function InitModule(ctx: nkruntime.Context, logger: nkruntime.Logger, nk: nkrunt
   initializer.registerRpc("update_character", rpcUpdateCharacter);
   initializer.registerRpc("delete_character", rpcDeleteCharacter);
   initializer.registerRpc("get_character", rpcGetCharacter);
+  initializer.registerRpc("assign_house", rpcAssignHouse);
 
-  logger.info("Module de gestion des personnages Harry Potter initialisé");
+  logger.info("Module de gestion des personnages Harry Potter initialisé avec système de maisons");
 }
 
 /**
@@ -83,6 +96,7 @@ function rpcCreateCharacter(
     name: request.name.trim(),
     level: 1,
     xp: 0,
+    house: DEFAULT_HOUSE,
     createdAt: now,
     updatedAt: now,
   };
@@ -279,6 +293,68 @@ function rpcDeleteCharacter(
   logger.info("Personnage supprimé: %s", request.characterId);
 
   return JSON.stringify({ success: true });
+}
+
+/**
+ * RPC: Assigner une maison à un personnage
+ */
+function rpcAssignHouse(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: AssignHouseRequest = JSON.parse(payload);
+
+  if (!request.characterId) {
+    throw Error("ID du personnage requis");
+  }
+
+  if (!request.house) {
+    throw Error("Maison requise");
+  }
+
+  // Valider la maison
+  if (!VALID_HOUSES.includes(request.house)) {
+    throw Error(`Maison invalide. Maisons valides: ${VALID_HOUSES.join(", ")}`);
+  }
+
+  // Lire le personnage existant
+  const objects = nk.storageRead([{
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+  }]);
+
+  if (objects.length === 0) {
+    throw Error("Personnage non trouvé");
+  }
+
+  const character = objects[0].value as Character;
+
+  // Assigner la maison
+  character.house = request.house;
+  character.updatedAt = Date.now();
+
+  // Sauvegarder
+  const write: nkruntime.StorageWriteRequest = {
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+    value: character,
+    permissionRead: 1,
+    permissionWrite: 0,
+  };
+
+  nk.storageWrite([write]);
+
+  logger.info("Maison assignée: %s pour le personnage %s (ID: %s)", request.house, character.name, character.id);
+
+  return JSON.stringify(character);
 }
 
 // Point d'entrée du module

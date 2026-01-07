@@ -11,7 +11,18 @@ Chaque joueur peut créer jusqu'à 10 personnages avec :
 - **Nom** (2-20 caractères)
 - **Niveau** (1-100)
 - **XP** (points d'expérience)
+- **Maison** (Venatrix, Falcon, Brumval, Aerwyn, ou "Pas de Maison")
 - **Timestamps** de création et modification
+
+### Système de Maisons
+
+Quatre maisons sont disponibles dans le MMO:
+- **Venatrix** 🦅
+- **Falcon** 🦅
+- **Brumval** 🦡
+- **Aerwyn** 🦁
+
+À la création, chaque personnage commence avec **"Pas de Maison"** et peut ensuite être assigné à une maison via le RPC `assign_house`.
 
 ## Compilation
 
@@ -53,6 +64,7 @@ Crée un nouveau personnage.
   "name": "Harry Potter",
   "level": 1,
   "xp": 0,
+  "house": "Pas de Maison",
   "createdAt": 1234567890,
   "updatedAt": 1234567890
 }
@@ -73,6 +85,7 @@ Récupère tous les personnages de l'utilisateur connecté.
       "name": "Harry Potter",
       "level": 5,
       "xp": 1250,
+      "house": "Venatrix",
       "createdAt": 1234567890,
       "updatedAt": 1234567900
     },
@@ -81,6 +94,7 @@ Récupère tous les personnages de l'utilisateur connecté.
       "name": "Hermione Granger",
       "level": 3,
       "xp": 800,
+      "house": "Falcon",
       "createdAt": 1234567891,
       "updatedAt": 1234567901
     }
@@ -106,6 +120,7 @@ Récupère un personnage spécifique.
   "name": "Harry Potter",
   "level": 5,
   "xp": 1250,
+  "house": "Venatrix",
   "createdAt": 1234567890,
   "updatedAt": 1234567900
 }
@@ -134,12 +149,45 @@ Tous les champs sauf `characterId` sont optionnels.
   "name": "Harry J. Potter",
   "level": 6,
   "xp": 1500,
+  "house": "Venatrix",
   "createdAt": 1234567890,
   "updatedAt": 1234567999
 }
 ```
 
-### 5. delete_character
+### 5. assign_house
+
+Assigne une maison à un personnage.
+
+**Payload:**
+```json
+{
+  "characterId": "uuid-du-personnage",
+  "house": "Venatrix"
+}
+```
+
+**Maisons valides:**
+- `"Pas de Maison"` (par défaut)
+- `"Venatrix"`
+- `"Falcon"`
+- `"Brumval"`
+- `"Aerwyn"`
+
+**Réponse:**
+```json
+{
+  "id": "uuid-du-personnage",
+  "name": "Harry Potter",
+  "level": 5,
+  "xp": 1250,
+  "house": "Venatrix",
+  "createdAt": 1234567890,
+  "updatedAt": 1234567999
+}
+```
+
+### 6. delete_character
 
 Supprime un personnage.
 
@@ -163,6 +211,7 @@ Supprime un personnage.
 - **Nom:** 2-20 caractères
 - **Niveau:** 1-100
 - **XP:** >= 0
+- **Maison:** Doit être l'une des 5 maisons valides
 
 ## Sécurité
 
