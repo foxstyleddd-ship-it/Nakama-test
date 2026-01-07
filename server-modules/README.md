@@ -32,6 +32,15 @@ Chaque personnage possède un inventaire persistant avec :
 - **5 niveaux de rareté** (common, uncommon, rare, epic, legendary)
 - **Catégories** : baguettes, potions, livres, équipement, ingrédients, consommables
 
+### Système de Sorts
+
+Chaque personnage peut apprendre et améliorer des sorts :
+- **22 sorts prédéfinis** répartis en 5 catégories
+- **Amélioration progressive** de niveau 0 à 3
+- **5 types de sorts** : offensif, défensif, soin, contrôle, utilitaire
+- **7 éléments** : feu, glace, foudre, nature, lumière, ténèbres, neutre
+- **Sorts célèbres** : Expelliarmus, Protego, Stupefix, Incendio, et bien d'autres
+
 ## Compilation
 
 ```bash
@@ -573,6 +582,208 @@ Récupère la liste de tous les objets disponibles dans le jeu.
 
 ---
 
+## RPCs - Système de Sorts
+
+### 15. learn_spell
+
+Permet à un personnage d'apprendre un nouveau sort (niveau 0).
+
+**Payload:**
+```json
+{
+  "characterId": "uuid-du-personnage",
+  "spellId": "spell_expelliarmus"
+}
+```
+
+**Champs:**
+- `characterId` (requis): ID du personnage
+- `spellId` (requis): ID du sort (doit exister dans la liste prédéfinie)
+
+**Réponse:**
+```json
+{
+  "characterSpells": {
+    "characterId": "uuid-du-personnage",
+    "spells": [
+      {
+        "spellId": "spell_expelliarmus",
+        "level": 0,
+        "learnedAt": 1234567890,
+        "lastUpgradedAt": 1234567890
+      }
+    ],
+    "updatedAt": 1234567890
+  },
+  "spellLearned": {
+    "id": "spell_expelliarmus",
+    "name": "Expelliarmus",
+    "description": "Désarme l'adversaire",
+    "type": "offensive",
+    "element": "neutral",
+    "maxLevel": 3
+  }
+}
+```
+
+### 16. upgrade_spell
+
+Améliore un sort déjà appris d'un niveau (maximum niveau 3).
+
+**Payload:**
+```json
+{
+  "characterId": "uuid-du-personnage",
+  "spellId": "spell_expelliarmus"
+}
+```
+
+**Champs:**
+- `characterId` (requis): ID du personnage
+- `spellId` (requis): ID du sort à améliorer
+
+**Réponse:**
+```json
+{
+  "characterSpells": {
+    "characterId": "uuid-du-personnage",
+    "spells": [
+      {
+        "spellId": "spell_expelliarmus",
+        "level": 1,
+        "learnedAt": 1234567890,
+        "lastUpgradedAt": 1234567920
+      }
+    ],
+    "updatedAt": 1234567920
+  },
+  "spellUpgraded": {
+    "id": "spell_expelliarmus",
+    "name": "Expelliarmus",
+    "description": "Désarme l'adversaire",
+    "type": "offensive",
+    "element": "neutral",
+    "maxLevel": 3
+  },
+  "newLevel": 1
+}
+```
+
+### 17. get_character_spells
+
+Récupère tous les sorts appris par un personnage.
+
+**Payload:**
+```json
+{
+  "characterId": "uuid-du-personnage"
+}
+```
+
+**Réponse:**
+```json
+{
+  "characterId": "uuid-du-personnage",
+  "spells": [
+    {
+      "spellId": "spell_expelliarmus",
+      "level": 2,
+      "learnedAt": 1234567890,
+      "lastUpgradedAt": 1234567950,
+      "spell": {
+        "id": "spell_expelliarmus",
+        "name": "Expelliarmus",
+        "description": "Désarme l'adversaire",
+        "type": "offensive",
+        "element": "neutral",
+        "maxLevel": 3
+      }
+    },
+    {
+      "spellId": "spell_protego",
+      "level": 3,
+      "learnedAt": 1234567900,
+      "lastUpgradedAt": 1234567980,
+      "spell": {
+        "id": "spell_protego",
+        "name": "Protego",
+        "description": "Crée un bouclier protecteur",
+        "type": "defensive",
+        "element": "neutral",
+        "maxLevel": 3
+      }
+    }
+  ],
+  "updatedAt": 1234567980
+}
+```
+
+### 18. get_available_spells
+
+Récupère la liste de tous les sorts disponibles dans le jeu.
+
+**Payload:** `{}` (vide ou non requis)
+
+**Réponse:**
+```json
+{
+  "spells": [
+    {
+      "id": "spell_expelliarmus",
+      "name": "Expelliarmus",
+      "description": "Désarme l'adversaire",
+      "type": "offensive",
+      "element": "neutral",
+      "maxLevel": 3
+    },
+    {
+      "id": "spell_protego",
+      "name": "Protego",
+      "description": "Crée un bouclier protecteur",
+      "type": "defensive",
+      "element": "neutral",
+      "maxLevel": 3
+    }
+  ]
+}
+```
+
+**Liste complète des sorts (22 sorts):**
+
+**Sorts Offensifs (6):**
+- `spell_expelliarmus` - Expelliarmus (neutral) - Désarme l'adversaire
+- `spell_stupefix` - Stupéfix (neutral) - Stupéfie la cible
+- `spell_incendio` - Incendio (fire) - Projette des flammes
+- `spell_glacius` - Glacius (ice) - Gèle la cible
+- `spell_bombarda` - Bombarda (fire) - Provoque une explosion
+- `spell_fulgur` - Fulgur (lightning) - Lance un éclair foudroyant
+
+**Sorts Défensifs (3):**
+- `spell_protego` - Protego (neutral) - Crée un bouclier protecteur
+- `spell_finite` - Finite Incantatem (neutral) - Annule les sorts
+- `spell_repello` - Repello (neutral) - Repousse les ennemis
+
+**Sorts de Soin (3):**
+- `spell_episkey` - Episkey (light) - Soigne les blessures mineures
+- `spell_vulnera` - Vulnera Sanentur (light) - Soigne les blessures graves
+- `spell_rennervate` - Rennervate (light) - Ranime une personne inconsciente
+
+**Sorts de Contrôle (3):**
+- `spell_immobulus` - Immobulus (neutral) - Immobilise la cible
+- `spell_petrificus` - Petrificus Totalus (neutral) - Paralyse complètement la cible
+- `spell_confundo` - Confundo (neutral) - Embrouille l'esprit de la cible
+
+**Sorts Utilitaires (7):**
+- `spell_lumos` - Lumos (light) - Crée de la lumière
+- `spell_nox` - Nox (dark) - Éteint la lumière
+- `spell_alohomora` - Alohomora (neutral) - Déverrouille les serrures
+- `spell_wingardium` - Wingardium Leviosa (neutral) - Fait léviter les objets
+- `spell_accio` - Accio (neutral) - Attire un objet à soi
+- `spell_revelio` - Revelio (light) - Révèle ce qui est caché
+- `spell_apparate` - Transplanage (neutral) - Téléportation courte distance
+
+---
+
 ## Limites
 
 ### Personnages
@@ -596,11 +807,21 @@ Récupère la liste de tous les objets disponibles dans le jeu.
 - **Catégories:** wand, potion, book, equipment, ingredient, consumable
 - **Raretés:** common, uncommon, rare, epic, legendary
 
+### Sorts
+- **SpellId:** Doit exister dans la liste prédéfinie (22 sorts disponibles)
+- **Niveau minimum:** 0 (à l'apprentissage)
+- **Niveau maximum:** 3
+- **Amélioration:** +1 niveau par appel à upgrade_spell
+- **Types:** offensive, defensive, healing, control, utility
+- **Éléments:** fire, ice, lightning, nature, light, dark, neutral
+- **Pas de limite** sur le nombre de sorts qu'un personnage peut apprendre
+
 ## Sécurité
 
 - Tous les RPCs nécessitent une authentification
 - Les personnages sont stockés avec des permissions privées (lecture/écriture réservées au propriétaire)
 - Les points de maison et l'historique sont en lecture publique mais écriture interdite aux clients
 - Les inventaires sont stockés avec des permissions privées (lecture/écriture réservées au propriétaire)
+- Les sorts sont stockés avec des permissions privées (lecture/écriture réservées au propriétaire)
 - Validation des entrées côté serveur
-- Vérification de l'existence des objets dans la liste prédéfinie
+- Vérification de l'existence des objets et sorts dans les listes prédéfinies

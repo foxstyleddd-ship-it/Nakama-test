@@ -64,6 +64,17 @@ Gestion complète de l'inventaire pour chaque personnage:
 
 Objets légendaires inclus : Baguette de Sureau, Felix Felicis, Cape d'Invisibilité, et plus encore!
 
+### ⚡ Système de Sorts
+
+Apprentissage et progression des sorts magiques:
+- **22 sorts prédéfinis** (Expelliarmus, Protego, Incendio, Stupefix, etc.)
+- **Amélioration progressive** de niveau 0 à 3
+- **5 catégories** : offensif, défensif, soin, contrôle, utilitaire
+- **7 éléments magiques** : feu, glace, foudre, nature, lumière, ténèbres, neutre
+- **Progression personnalisée** : chaque joueur choisit ses sorts
+
+Maîtrisez des sorts légendaires comme Protego, Bombarda, ou le mystérieux Transplanage!
+
 📖 **[Guide d'intégration Unreal Engine complet →](UNREAL_INTEGRATION.md)**
 
 ## Prérequis
@@ -213,6 +224,21 @@ Client->RPC(Session, TEXT("get_character_inventory"),
 
 // Obtenir la liste des objets disponibles
 Client->RPC(Session, TEXT("get_available_items"), TEXT("{}"), ...);
+
+// Apprendre un sort
+Client->RPC(Session, TEXT("learn_spell"),
+    TEXT("{\\\"characterId\\\":\\\"xxx\\\",\\\"spellId\\\":\\\"spell_expelliarmus\\\"}"), ...);
+
+// Améliorer un sort
+Client->RPC(Session, TEXT("upgrade_spell"),
+    TEXT("{\\\"characterId\\\":\\\"xxx\\\",\\\"spellId\\\":\\\"spell_expelliarmus\\\"}"), ...);
+
+// Récupérer les sorts d'un personnage
+Client->RPC(Session, TEXT("get_character_spells"),
+    TEXT("{\\\"characterId\\\":\\\"xxx\\\"}"), ...);
+
+// Obtenir la liste des sorts disponibles
+Client->RPC(Session, TEXT("get_available_spells"), TEXT("{}"), ...);
 ```
 
 ## Logs
@@ -294,11 +320,12 @@ Vous pouvez facilement étendre le système pour ajouter:
 - ✅ **Maisons** (déjà implémenté: Venatrix, Falcon, Brumval, Aerwyn)
 - ✅ **Points de maison** (déjà implémenté: ajout/retrait, classement, historique)
 - ✅ **Inventaire** (déjà implémenté: 19 objets, 6 catégories, empilement automatique)
-- Sorts appris
+- ✅ **Sorts** (déjà implémenté: 22 sorts, 5 types, amélioration jusqu'au niveau 3)
 - Quêtes complétées
 - Statistiques de jeu
 - Récompenses automatiques pour les maisons gagnantes
 - Crafting et alchimie
+- Système de cooldown pour les sorts
 
 Consultez `server-modules/README.md` pour plus de détails.
 

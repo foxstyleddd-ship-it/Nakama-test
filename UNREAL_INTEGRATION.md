@@ -1114,6 +1114,422 @@ UPROPERTY(BlueprintAssignable, Category = "Nakama|Inventory")
 FOnAvailableItemsLoaded OnAvailableItemsLoaded;
 ```
 
+## Système de Sorts
+
+### Structures de données
+
+Ajoutez ces structures à votre subsystem:
+
+```cpp
+UENUM(BlueprintType)
+enum class ESpellType : uint8
+{
+    Offensive UMETA(DisplayName = "Offensif"),
+    Defensive UMETA(DisplayName = "Défensif"),
+    Healing UMETA(DisplayName = "Soin"),
+    Control UMETA(DisplayName = "Contrôle"),
+    Utility UMETA(DisplayName = "Utilitaire")
+};
+
+UENUM(BlueprintType)
+enum class ESpellElement : uint8
+{
+    Fire UMETA(DisplayName = "Feu"),
+    Ice UMETA(DisplayName = "Glace"),
+    Lightning UMETA(DisplayName = "Foudre"),
+    Nature UMETA(DisplayName = "Nature"),
+    Light UMETA(DisplayName = "Lumière"),
+    Dark UMETA(DisplayName = "Ténèbres"),
+    Neutral UMETA(DisplayName = "Neutre")
+};
+
+USTRUCT(BlueprintType)
+struct FSpell
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Id;
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Name;
+
+    UPROPERTY(BlueprintReadWrite)
+    FString Description;
+
+    UPROPERTY(BlueprintReadWrite)
+    ESpellType Type;
+
+    UPROPERTY(BlueprintReadWrite)
+    ESpellElement Element;
+
+    UPROPERTY(BlueprintReadWrite)
+    int32 MaxLevel; // Toujours 3
+};
+
+USTRUCT(BlueprintType)
+struct FLearnedSpell
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FString SpellId;
+
+    UPROPERTY(BlueprintReadWrite)
+    int32 Level; // 0 à 3
+
+    UPROPERTY(BlueprintReadWrite)
+    int64 LearnedAt;
+
+    UPROPERTY(BlueprintReadWrite)
+    int64 LastUpgradedAt;
+
+    UPROPERTY(BlueprintReadWrite)
+    FSpell Spell; // Enrichi depuis PREDEFINED_SPELLS
+};
+
+USTRUCT(BlueprintType)
+struct FCharacterSpells
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FString CharacterId;
+
+    UPROPERTY(BlueprintReadWrite)
+    TArray<FLearnedSpell> Spells;
+
+    UPROPERTY(BlueprintReadWrite)
+    int64 UpdatedAt;
+};
+```
+
+### Apprendre un sort
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::LearnSpell(
+    const FString& CharacterId,
+    const FString& SpellId)
+{
+    if (!CurrentSession)
+    {
+        OnError.Broadcast("Non authentifié");
+        return;
+    }
+
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("characterId"), CharacterId);
+    JsonObject->SetStringField(TEXT("spellId"), SpellId);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("learn_spell"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                const TSharedPtr<FJsonObject>* SpellLearnedObj;
+                if (ResponseJson->TryGetObjectField(TEXT("spellLearned"), SpellLearnedObj))
+                {
+                    FSpell Spell = ParseSpell(*SpellLearnedObj);
+                    OnSpellLearned.Broadcast(Spell);
+                    UE_LOG(LogTemp, Log, TEXT("Sort appris: %s"), *Spell.Name);
+                }
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+```
+
+### Améliorer un sort
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::UpgradeSpell(
+    const FString& CharacterId,
+    const FString& SpellId)
+{
+    if (!CurrentSession)
+    {
+        OnError.Broadcast("Non authentifié");
+        return;
+    }
+
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("characterId"), CharacterId);
+    JsonObject->SetStringField(TEXT("spellId"), SpellId);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("upgrade_spell"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                int32 NewLevel = ResponseJson->GetIntegerField(TEXT("newLevel"));
+                const TSharedPtr<FJsonObject>* SpellObj;
+                if (ResponseJson->TryGetObjectField(TEXT("spellUpgraded"), SpellObj))
+                {
+                    FSpell Spell = ParseSpell(*SpellObj);
+                    OnSpellUpgraded.Broadcast(Spell, NewLevel);
+                    UE_LOG(LogTemp, Log, TEXT("Sort amélioré: %s niveau %d"), *Spell.Name, NewLevel);
+                }
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+```
+
+### Récupérer les sorts d'un personnage
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::GetCharacterSpells(const FString& CharacterId)
+{
+    TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
+    JsonObject->SetStringField(TEXT("characterId"), CharacterId);
+
+    FString JsonString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("get_character_spells"),
+        JsonString,
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                FCharacterSpells CharacterSpells = ParseCharacterSpells(ResponseJson);
+                OnCharacterSpellsLoaded.Broadcast(CharacterSpells);
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+
+FCharacterSpells UHarryPotterGameInstanceSubsystem::ParseCharacterSpells(const TSharedPtr<FJsonObject>& JsonObject)
+{
+    FCharacterSpells CharacterSpells;
+    CharacterSpells.CharacterId = JsonObject->GetStringField(TEXT("characterId"));
+    CharacterSpells.UpdatedAt = JsonObject->GetNumberField(TEXT("updatedAt"));
+
+    const TArray<TSharedPtr<FJsonValue>>* SpellsArray;
+    if (JsonObject->TryGetArrayField(TEXT("spells"), SpellsArray))
+    {
+        for (const TSharedPtr<FJsonValue>& SpellValue : *SpellsArray)
+        {
+            const TSharedPtr<FJsonObject>& SpellObj = SpellValue->AsObject();
+            FLearnedSpell LearnedSpell;
+
+            LearnedSpell.SpellId = SpellObj->GetStringField(TEXT("spellId"));
+            LearnedSpell.Level = SpellObj->GetIntegerField(TEXT("level"));
+            LearnedSpell.LearnedAt = SpellObj->GetNumberField(TEXT("learnedAt"));
+            LearnedSpell.LastUpgradedAt = SpellObj->GetNumberField(TEXT("lastUpgradedAt"));
+
+            // Parser le sort enrichi
+            const TSharedPtr<FJsonObject>* SpellDataObj;
+            if (SpellObj->TryGetObjectField(TEXT("spell"), SpellDataObj))
+            {
+                LearnedSpell.Spell = ParseSpell(*SpellDataObj);
+            }
+
+            CharacterSpells.Spells.Add(LearnedSpell);
+        }
+    }
+
+    return CharacterSpells;
+}
+
+FSpell UHarryPotterGameInstanceSubsystem::ParseSpell(const TSharedPtr<FJsonObject>& JsonObject)
+{
+    FSpell Spell;
+    Spell.Id = JsonObject->GetStringField(TEXT("id"));
+    Spell.Name = JsonObject->GetStringField(TEXT("name"));
+    Spell.Description = JsonObject->GetStringField(TEXT("description"));
+    Spell.MaxLevel = JsonObject->GetIntegerField(TEXT("maxLevel"));
+    // Parser type et element...
+    return Spell;
+}
+```
+
+### Obtenir la liste des sorts disponibles
+
+```cpp
+void UHarryPotterGameInstanceSubsystem::GetAvailableSpells()
+{
+    NakamaClient->RPC(
+        CurrentSession,
+        TEXT("get_available_spells"),
+        TEXT("{}"),
+        [this](const FNakamaRPC& Rpc)
+        {
+            TSharedPtr<FJsonObject> ResponseJson;
+            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Rpc.Payload);
+
+            if (FJsonSerializer::Deserialize(Reader, ResponseJson))
+            {
+                const TArray<TSharedPtr<FJsonValue>>* SpellsArray;
+                if (ResponseJson->TryGetArrayField(TEXT("spells"), SpellsArray))
+                {
+                    TArray<FSpell> AvailableSpells;
+                    for (const TSharedPtr<FJsonValue>& SpellValue : *SpellsArray)
+                    {
+                        const TSharedPtr<FJsonObject>& SpellObj = SpellValue->AsObject();
+                        FSpell Spell = ParseSpell(SpellObj);
+                        AvailableSpells.Add(Spell);
+                    }
+                    OnAvailableSpellsLoaded.Broadcast(AvailableSpells);
+                }
+            }
+        },
+        [this](const FNakamaError& Error)
+        {
+            OnError.Broadcast(Error.Message);
+        }
+    );
+}
+```
+
+### Exemple d'utilisation - Lancer un sort
+
+```cpp
+// Composant de lanceur de sorts
+void USpellCasterComponent::CastSpell(const FString& SpellId, int32 SpellLevel)
+{
+    // Trouver le sort dans la liste des sorts appris
+    FLearnedSpell* LearnedSpell = CharacterSpells.Spells.FindByPredicate([&](const FLearnedSpell& S) {
+        return S.SpellId == SpellId;
+    });
+
+    if (!LearnedSpell)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Sort non appris: %s"), *SpellId);
+        return;
+    }
+
+    // Calculer les dégâts/effets en fonction du niveau
+    float Damage = BaseDamage * (1.0f + (LearnedSpell->Level * 0.3f));
+
+    // Lancer le sort
+    if (LearnedSpell->Spell.Type == ESpellType::Offensive)
+    {
+        DealDamage(Target, Damage, LearnedSpell->Spell.Element);
+    }
+    else if (LearnedSpell->Spell.Type == ESpellType::Healing)
+    {
+        Heal(Target, Damage);
+    }
+
+    // Animation et effets visuels
+    PlaySpellAnimation(LearnedSpell->Spell.Id, LearnedSpell->Level);
+}
+```
+
+### Widget de livre de sorts
+
+Créez un Widget Blueprint pour afficher et gérer les sorts:
+
+```
+Event Construct
+└─ Get Subsystem
+   └─ Get Character Spells
+      └─ On Character Spells Loaded
+         └─ For Each Spell
+            └─ Create Spell Slot Widget
+               ├─ Display Spell Icon
+               ├─ Display Spell Name
+               ├─ Display Level (Stars 0-3)
+               ├─ Display Type & Element
+               └─ Progress Bar to Next Level
+
+On Spell Slot Clicked
+└─ Show Spell Details Panel
+   ├─ Spell Name
+   ├─ Spell Description
+   ├─ Type & Element Icons
+   ├─ Current Level / Max Level
+   └─ Button "Améliorer" (if Level < 3)
+
+On Upgrade Button Clicked
+└─ Get Subsystem
+   └─ Upgrade Spell
+      └─ On Spell Upgraded
+         └─ Play Level Up Animation
+         └─ Refresh Spell Display
+```
+
+### Exemple - Apprendre un sort après une quête
+
+```cpp
+void AQuestManager::OnSpellQuestCompleted(const FString& CharacterId, const FString& SpellReward)
+{
+    auto* Subsystem = GetGameInstance()->GetSubsystem<UHarryPotterGameInstanceSubsystem>();
+    if (Subsystem)
+    {
+        // Apprendre le sort en récompense
+        Subsystem->LearnSpell(CharacterId, SpellReward);
+
+        // Afficher notification
+        ShowNotification(FString::Printf(
+            TEXT("Nouveau sort appris : %s !"), *GetSpellName(SpellReward)
+        ));
+    }
+}
+```
+
+### Callbacks pour les sorts
+
+Ajoutez ces delegates au subsystem:
+
+```cpp
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSpellLearned, FSpell, Spell);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSpellUpgraded, FSpell, Spell, int32, NewLevel);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCharacterSpellsLoaded, FCharacterSpells, CharacterSpells);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAvailableSpellsLoaded, const TArray<FSpell>&, Spells);
+
+UPROPERTY(BlueprintAssignable, Category = "Nakama|Spells")
+FOnSpellLearned OnSpellLearned;
+
+UPROPERTY(BlueprintAssignable, Category = "Nakama|Spells")
+FOnSpellUpgraded OnSpellUpgraded;
+
+UPROPERTY(BlueprintAssignable, Category = "Nakama|Spells")
+FOnCharacterSpellsLoaded OnCharacterSpellsLoaded;
+
+UPROPERTY(BlueprintAssignable, Category = "Nakama|Spells")
+FOnAvailableSpellsLoaded OnAvailableSpellsLoaded;
+```
+
 ## Exemple de flux complet
 
 ### Écran de sélection de personnage

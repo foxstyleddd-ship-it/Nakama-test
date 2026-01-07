@@ -116,12 +116,54 @@ interface GetInventoryRequest {
   characterId: string;
 }
 
+// Système de sorts
+type SpellType = "offensive" | "defensive" | "utility" | "healing" | "control";
+type SpellElement = "fire" | "ice" | "lightning" | "nature" | "light" | "dark" | "neutral";
+
+interface Spell {
+  id: string;
+  name: string;
+  description: string;
+  type: SpellType;
+  element: SpellElement;
+  maxLevel: number; // Toujours 3
+}
+
+interface LearnedSpell {
+  spellId: string;
+  level: number; // 0 à 3
+  learnedAt: number;
+  lastUpgradedAt: number;
+}
+
+interface CharacterSpells {
+  characterId: string;
+  spells: LearnedSpell[];
+  updatedAt: number;
+}
+
+interface LearnSpellRequest {
+  characterId: string;
+  spellId: string;
+}
+
+interface UpgradeSpellRequest {
+  characterId: string;
+  spellId: string;
+}
+
+interface GetCharacterSpellsRequest {
+  characterId: string;
+}
+
 const COLLECTION_CHARACTERS = "characters";
 const COLLECTION_HOUSE_POINTS = "house_points";
 const COLLECTION_HOUSE_POINTS_HISTORY = "house_points_history";
 const COLLECTION_INVENTORY = "character_inventory";
+const COLLECTION_SPELLS = "character_spells";
 const MAX_CHARACTERS_PER_ACCOUNT = 10;
 const PLAYABLE_HOUSES: House[] = ["Venatrix", "Falcon", "Brumval", "Aerwyn"];
+const MAX_SPELL_LEVEL = 3;
 
 // Liste des objets prédéfinis
 const PREDEFINED_ITEMS: Item[] = [
@@ -158,6 +200,41 @@ const PREDEFINED_ITEMS: Item[] = [
   { id: "food_beans", name: "Dragées Surprises de Bertie Crochue", description: "Bonbons aux saveurs surprenantes", type: "consumable", rarity: "common", maxStack: 50 },
 ];
 
+// Liste des sorts prédéfinis
+const PREDEFINED_SPELLS: Spell[] = [
+  // Sorts offensifs
+  { id: "spell_expelliarmus", name: "Expelliarmus", description: "Désarme l'adversaire", type: "offensive", element: "neutral", maxLevel: 3 },
+  { id: "spell_stupefix", name: "Stupéfix", description: "Stupéfie la cible", type: "offensive", element: "neutral", maxLevel: 3 },
+  { id: "spell_incendio", name: "Incendio", description: "Projette des flammes", type: "offensive", element: "fire", maxLevel: 3 },
+  { id: "spell_glacius", name: "Glacius", description: "Gèle la cible", type: "offensive", element: "ice", maxLevel: 3 },
+  { id: "spell_bombarda", name: "Bombarda", description: "Provoque une explosion", type: "offensive", element: "fire", maxLevel: 3 },
+  { id: "spell_fulgur", name: "Fulgur", description: "Lance un éclair foudroyant", type: "offensive", element: "lightning", maxLevel: 3 },
+
+  // Sorts défensifs
+  { id: "spell_protego", name: "Protego", description: "Crée un bouclier protecteur", type: "defensive", element: "neutral", maxLevel: 3 },
+  { id: "spell_finite", name: "Finite Incantatem", description: "Annule les sorts", type: "defensive", element: "neutral", maxLevel: 3 },
+  { id: "spell_repello", name: "Repello", description: "Repousse les ennemis", type: "defensive", element: "neutral", maxLevel: 3 },
+
+  // Sorts de soin
+  { id: "spell_episkey", name: "Episkey", description: "Soigne les blessures mineures", type: "healing", element: "light", maxLevel: 3 },
+  { id: "spell_vulnera", name: "Vulnera Sanentur", description: "Soigne les blessures graves", type: "healing", element: "light", maxLevel: 3 },
+  { id: "spell_rennervate", name: "Rennervate", description: "Ranime une personne inconsciente", type: "healing", element: "light", maxLevel: 3 },
+
+  // Sorts de contrôle
+  { id: "spell_immobulus", name: "Immobulus", description: "Immobilise la cible", type: "control", element: "neutral", maxLevel: 3 },
+  { id: "spell_petrificus", name: "Petrificus Totalus", description: "Paralyse complètement la cible", type: "control", element: "neutral", maxLevel: 3 },
+  { id: "spell_confundo", name: "Confundo", description: "Embrouille l'esprit de la cible", type: "control", element: "neutral", maxLevel: 3 },
+
+  // Sorts utilitaires
+  { id: "spell_lumos", name: "Lumos", description: "Crée de la lumière", type: "utility", element: "light", maxLevel: 3 },
+  { id: "spell_nox", name: "Nox", description: "Éteint la lumière", type: "utility", element: "dark", maxLevel: 3 },
+  { id: "spell_alohomora", name: "Alohomora", description: "Déverrouille les serrures", type: "utility", element: "neutral", maxLevel: 3 },
+  { id: "spell_wingardium", name: "Wingardium Leviosa", description: "Fait léviter les objets", type: "utility", element: "neutral", maxLevel: 3 },
+  { id: "spell_accio", name: "Accio", description: "Attire un objet à soi", type: "utility", element: "neutral", maxLevel: 3 },
+  { id: "spell_revelio", name: "Revelio", description: "Révèle ce qui est caché", type: "utility", element: "light", maxLevel: 3 },
+  { id: "spell_apparate", name: "Transplanage", description: "Téléportation courte distance", type: "utility", element: "neutral", maxLevel: 3 },
+];
+
 /**
  * Initialise le module serveur
  */
@@ -182,10 +259,16 @@ function InitModule(ctx: nkruntime.Context, logger: nkruntime.Logger, nk: nkrunt
   initializer.registerRpc("get_character_inventory", rpcGetCharacterInventory);
   initializer.registerRpc("get_available_items", rpcGetAvailableItems);
 
+  // Enregistrement des RPCs - Sorts
+  initializer.registerRpc("learn_spell", rpcLearnSpell);
+  initializer.registerRpc("upgrade_spell", rpcUpgradeSpell);
+  initializer.registerRpc("get_character_spells", rpcGetCharacterSpells);
+  initializer.registerRpc("get_available_spells", rpcGetAvailableSpells);
+
   // Initialiser les points de maison à 0
   initializeHousePoints(nk, logger);
 
-  logger.info("Module de gestion des personnages Harry Potter initialisé avec système de maisons, points et inventaire");
+  logger.info("Module de gestion des personnages Harry Potter initialisé avec système de maisons, points, inventaire et sorts");
 }
 
 /**
@@ -1078,6 +1161,278 @@ function rpcGetAvailableItems(
   logger.info("Liste des objets disponibles récupérée: %d objets", PREDEFINED_ITEMS.length);
 
   return JSON.stringify({ items: PREDEFINED_ITEMS });
+}
+
+// ============================================================================
+// SYSTÈME DE SORTS
+// ============================================================================
+
+/**
+ * Trouve un sort dans la liste prédéfinie
+ */
+function findSpell(spellId: string): Spell | null {
+  return PREDEFINED_SPELLS.find(spell => spell.id === spellId) || null;
+}
+
+/**
+ * Récupère ou crée les sorts d'un personnage
+ */
+function getOrCreateCharacterSpells(nk: nkruntime.Nakama, characterId: string, userId: string): CharacterSpells {
+  const objects = nk.storageRead([{
+    collection: COLLECTION_SPELLS,
+    key: characterId,
+    userId: userId,
+  }]);
+
+  if (objects.length > 0) {
+    return objects[0].value as CharacterSpells;
+  }
+
+  // Créer une liste vide de sorts
+  const characterSpells: CharacterSpells = {
+    characterId: characterId,
+    spells: [],
+    updatedAt: Date.now(),
+  };
+
+  nk.storageWrite([{
+    collection: COLLECTION_SPELLS,
+    key: characterId,
+    userId: userId,
+    value: characterSpells,
+    permissionRead: 1,
+    permissionWrite: 0,
+  }]);
+
+  return characterSpells;
+}
+
+/**
+ * RPC: Apprendre un nouveau sort
+ */
+function rpcLearnSpell(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: LearnSpellRequest = JSON.parse(payload);
+
+  // Validation
+  if (!request.characterId) {
+    throw Error("ID du personnage requis");
+  }
+
+  if (!request.spellId) {
+    throw Error("ID du sort requis");
+  }
+
+  // Vérifier que le sort existe
+  const spell = findSpell(request.spellId);
+  if (!spell) {
+    throw Error(`Sort "${request.spellId}" non trouvé dans la liste des sorts disponibles`);
+  }
+
+  // Vérifier que le personnage appartient à l'utilisateur
+  const characterObjects = nk.storageRead([{
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+  }]);
+
+  if (characterObjects.length === 0) {
+    throw Error("Personnage non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  // Récupérer les sorts du personnage
+  const characterSpells = getOrCreateCharacterSpells(nk, request.characterId, ctx.userId);
+
+  // Vérifier si le sort est déjà appris
+  const existingSpell = characterSpells.spells.find(s => s.spellId === request.spellId);
+  if (existingSpell) {
+    throw Error(`Le sort "${spell.name}" est déjà appris (niveau ${existingSpell.level})`);
+  }
+
+  // Ajouter le sort au niveau 0
+  const now = Date.now();
+  characterSpells.spells.push({
+    spellId: request.spellId,
+    level: 0,
+    learnedAt: now,
+    lastUpgradedAt: now,
+  });
+
+  characterSpells.updatedAt = now;
+
+  // Sauvegarder
+  nk.storageWrite([{
+    collection: COLLECTION_SPELLS,
+    key: request.characterId,
+    userId: ctx.userId,
+    value: characterSpells,
+    permissionRead: 1,
+    permissionWrite: 0,
+  }]);
+
+  logger.info(
+    "Sort appris: %s (niveau 0) pour le personnage %s",
+    spell.name,
+    request.characterId
+  );
+
+  return JSON.stringify({ characterSpells, spellLearned: spell });
+}
+
+/**
+ * RPC: Améliorer un sort existant
+ */
+function rpcUpgradeSpell(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: UpgradeSpellRequest = JSON.parse(payload);
+
+  // Validation
+  if (!request.characterId) {
+    throw Error("ID du personnage requis");
+  }
+
+  if (!request.spellId) {
+    throw Error("ID du sort requis");
+  }
+
+  // Vérifier que le sort existe
+  const spell = findSpell(request.spellId);
+  if (!spell) {
+    throw Error(`Sort "${request.spellId}" non trouvé`);
+  }
+
+  // Vérifier que le personnage appartient à l'utilisateur
+  const characterObjects = nk.storageRead([{
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+  }]);
+
+  if (characterObjects.length === 0) {
+    throw Error("Personnage non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  // Récupérer les sorts du personnage
+  const characterSpells = getOrCreateCharacterSpells(nk, request.characterId, ctx.userId);
+
+  // Chercher le sort
+  const learnedSpell = characterSpells.spells.find(s => s.spellId === request.spellId);
+  if (!learnedSpell) {
+    throw Error(`Le sort "${spell.name}" n'a pas encore été appris. Utilisez learn_spell d'abord.`);
+  }
+
+  // Vérifier si le sort peut être amélioré
+  if (learnedSpell.level >= MAX_SPELL_LEVEL) {
+    throw Error(`Le sort "${spell.name}" est déjà au niveau maximum (${MAX_SPELL_LEVEL})`);
+  }
+
+  // Améliorer le sort
+  learnedSpell.level += 1;
+  learnedSpell.lastUpgradedAt = Date.now();
+  characterSpells.updatedAt = Date.now();
+
+  // Sauvegarder
+  nk.storageWrite([{
+    collection: COLLECTION_SPELLS,
+    key: request.characterId,
+    userId: ctx.userId,
+    value: characterSpells,
+    permissionRead: 1,
+    permissionWrite: 0,
+  }]);
+
+  logger.info(
+    "Sort amélioré: %s niveau %d -> %d pour le personnage %s",
+    spell.name,
+    learnedSpell.level - 1,
+    learnedSpell.level,
+    request.characterId
+  );
+
+  return JSON.stringify({ characterSpells, spellUpgraded: spell, newLevel: learnedSpell.level });
+}
+
+/**
+ * RPC: Récupérer les sorts d'un personnage
+ */
+function rpcGetCharacterSpells(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  if (!ctx.userId) {
+    throw Error("Utilisateur non authentifié");
+  }
+
+  const request: GetCharacterSpellsRequest = JSON.parse(payload);
+
+  if (!request.characterId) {
+    throw Error("ID du personnage requis");
+  }
+
+  // Vérifier que le personnage appartient à l'utilisateur
+  const characterObjects = nk.storageRead([{
+    collection: COLLECTION_CHARACTERS,
+    key: request.characterId,
+    userId: ctx.userId,
+  }]);
+
+  if (characterObjects.length === 0) {
+    throw Error("Personnage non trouvé ou n'appartient pas à l'utilisateur");
+  }
+
+  // Récupérer les sorts
+  const characterSpells = getOrCreateCharacterSpells(nk, request.characterId, ctx.userId);
+
+  // Enrichir avec les données complètes des sorts
+  const enrichedSpells = characterSpells.spells.map(learnedSpell => {
+    const spellData = findSpell(learnedSpell.spellId);
+    return {
+      ...learnedSpell,
+      spell: spellData,
+    };
+  });
+
+  logger.info("Sorts récupérés pour le personnage %s: %d sorts", request.characterId, characterSpells.spells.length);
+
+  return JSON.stringify({
+    characterId: characterSpells.characterId,
+    spells: enrichedSpells,
+    updatedAt: characterSpells.updatedAt,
+  });
+}
+
+/**
+ * RPC: Récupérer la liste de tous les sorts disponibles
+ */
+function rpcGetAvailableSpells(
+  ctx: nkruntime.Context,
+  logger: nkruntime.Logger,
+  nk: nkruntime.Nakama,
+  payload: string
+): string {
+  // Pas besoin d'authentification pour voir les sorts disponibles
+
+  logger.info("Liste des sorts disponibles récupérée: %d sorts", PREDEFINED_SPELLS.length);
+
+  return JSON.stringify({ spells: PREDEFINED_SPELLS });
 }
 
 // Point d'entrée du module
